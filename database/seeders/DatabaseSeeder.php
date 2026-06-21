@@ -40,6 +40,15 @@ class DatabaseSeeder extends Seeder
         $this->createTestReviews();
 
         $this->command->info('✅ Database seeding completed successfully!');
+        $this->command->info('');
+        $this->command->info('📋 Login Credentials:');
+        $this->command->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        $this->command->info('👤 Admin:     admin@kambeng.com / password123');
+        $this->command->info('🌾 Farmer:    modou@farm.com / password123');
+        $this->command->info('🌾 Farmer:    amina@farm.com / password123');
+        $this->command->info('🛒 Buyer:     kai@hospitality.com / password123');
+        $this->command->info('🛒 Buyer:     mama@catering.com / password123');
+        $this->command->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
 
     /**
@@ -55,6 +64,7 @@ class DatabaseSeeder extends Seeder
             'role' => 'admin',
             'password' => Hash::make('password123'),
             'verified_at' => now(),
+            'verification_status' => 'approved',
             'email_verified_at' => now(),
         ]);
 
@@ -75,6 +85,7 @@ class DatabaseSeeder extends Seeder
                 'farm_name' => 'Jallow Organic Farm',
                 'farm_location' => 'Brikama, West Coast Region',
                 'bio' => 'Growing organic vegetables since 2015. Specializing in tomatoes, onions, and leafy greens.',
+                'verification_status' => 'approved',
             ],
             [
                 'name' => 'Amina Saine',
@@ -84,6 +95,7 @@ class DatabaseSeeder extends Seeder
                 'farm_name' => 'Saine Family Farm',
                 'farm_location' => 'Farafenni, North Bank Region',
                 'bio' => 'Multi-generational farm producing rice, groundnuts, and fresh vegetables.',
+                'verification_status' => 'pending',
             ],
             [
                 'name' => 'Lamin Camara',
@@ -93,6 +105,7 @@ class DatabaseSeeder extends Seeder
                 'farm_name' => 'Camara Urban Farm',
                 'farm_location' => 'Banjul, Banjul Region',
                 'bio' => 'Urban farming pioneer. Growing fresh produce in the heart of Banjul.',
+                'verification_status' => 'pending',
             ],
             [
                 'name' => 'Fatou Bah',
@@ -102,6 +115,7 @@ class DatabaseSeeder extends Seeder
                 'farm_name' => 'Bah Market Garden',
                 'farm_location' => 'Serekunda, West Coast Region',
                 'bio' => 'Specializing in fresh herbs, peppers, and exotic vegetables.',
+                'verification_status' => 'rejected',
             ],
         ];
 
@@ -113,7 +127,9 @@ class DatabaseSeeder extends Seeder
                 'location' => $farmerData['location'],
                 'role' => 'farmer',
                 'password' => Hash::make('password123'),
-                'verified_at' => now(),
+                'verified_at' => $farmerData['verification_status'] === 'approved' ? now() : null,
+                'verification_status' => $farmerData['verification_status'],
+                'verification_requested_at' => $farmerData['verification_status'] !== 'approved' ? now() : null,
                 'email_verified_at' => now(),
             ]);
 
@@ -121,10 +137,10 @@ class DatabaseSeeder extends Seeder
                 'farm_name' => $farmerData['farm_name'],
                 'farm_location' => $farmerData['farm_location'],
                 'bio' => $farmerData['bio'],
-                'id_verified' => true,
+                'id_verified' => $farmerData['verification_status'] === 'approved',
             ]);
 
-            $this->command->info("🌾 Farmer created: {$farmerData['name']} ({$farmerData['farm_name']})");
+            $this->command->info("🌾 Farmer created: {$farmerData['name']} ({$farmerData['farm_name']}) - Status: {$farmerData['verification_status']}");
         }
     }
 
@@ -166,6 +182,7 @@ class DatabaseSeeder extends Seeder
                 'role' => 'buyer',
                 'password' => Hash::make('password123'),
                 'verified_at' => now(),
+                'verification_status' => 'approved',
                 'email_verified_at' => now(),
             ]);
 
@@ -178,8 +195,13 @@ class DatabaseSeeder extends Seeder
      */
     private function createTestProducts(): void
     {
-        $farmers = User::where('role', 'farmer')->get();
+        $farmers = User::where('role', 'farmer')->where('verification_status', 'approved')->get();
         
+        if ($farmers->isEmpty()) {
+            $this->command->warn('⚠️ No approved farmers found. Skipping product creation.');
+            return;
+        }
+
         $products = [
             [
                 'name' => 'Fresh Tomatoes',
@@ -264,8 +286,8 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($farmers as $index => $farmer) {
-            // Each farmer gets a few products
-            $farmerProducts = array_slice($products, $index * 2, 2);
+            // Each farmer gets 2-3 products
+            $farmerProducts = array_slice($products, $index * 2, rand(2, 3));
             
             foreach ($farmerProducts as $productData) {
                 Product::create([
@@ -293,29 +315,32 @@ class DatabaseSeeder extends Seeder
     private function createTestOrders(): void
     {
         $buyers = User::where('role', 'buyer')->get();
-        $products = Product::where('status', 'active')->take(5)->get();
+        $products = Product::where('status', 'active')->get();
+
+        if ($buyers->isEmpty() || $products->isEmpty()) {
+            $this->command->warn('⚠️ No buyers or products found. Skipping order creation.');
+            return;
+        }
 
         foreach ($buyers as $buyer) {
-            foreach ($products as $product) {
-                if (rand(0, 1)) {
-                    $quantity = rand(1, 5);
-                    $statuses = ['pending', 'confirmed', 'shipped', 'delivered', 'delivered', 'delivered'];
-                    $status = $statuses[array_rand($statuses)];
+            $product = $products->random();
+            
+            $quantity = rand(1, 5);
+            $statuses = ['pending', 'confirmed', 'shipped', 'delivered', 'delivered', 'delivered'];
+            $status = $statuses[array_rand($statuses)];
 
-                    Order::create([
-                        'buyer_id' => $buyer->id,
-                        'product_id' => $product->id,
-                        'quantity' => $quantity,
-                        'total_price' => $product->price * $quantity,
-                        'status' => $status,
-                        'delivery_method' => rand(0, 1) ? 'pickup' : 'farmer_delivery',
-                        'order_date' => now()->subDays(rand(1, 10)),
-                        'delivery_deadline' => now()->addDays(rand(1, 5)),
-                    ]);
+            Order::create([
+                'buyer_id' => $buyer->id,
+                'product_id' => $product->id,
+                'quantity' => $quantity,
+                'total_price' => $product->price * $quantity,
+                'status' => $status,
+                'delivery_method' => rand(0, 1) ? 'pickup' : 'farmer_delivery',
+                'order_date' => now()->subDays(rand(1, 10)),
+                'delivery_deadline' => now()->addDays(rand(1, 5)),
+            ]);
 
-                    $this->command->info("📦 Order created for: {$buyer->name}");
-                }
-            }
+            $this->command->info("📦 Order created for: {$buyer->name}");
         }
     }
 
@@ -326,6 +351,11 @@ class DatabaseSeeder extends Seeder
     {
         $deliveredOrders = Order::where('status', 'delivered')->take(10)->get();
         
+        if ($deliveredOrders->isEmpty()) {
+            $this->command->warn('⚠️ No delivered orders found. Skipping review creation.');
+            return;
+        }
+
         $comments = [
             'Excellent quality produce! Highly recommended.',
             'Fresh and timely delivery. Will order again.',

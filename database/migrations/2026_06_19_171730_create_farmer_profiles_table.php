@@ -18,6 +18,15 @@ return new class extends Migration
             $table->string('farm_location');
             $table->text('bio')->nullable();
             $table->boolean('id_verified')->default(false);
+            
+            // Verification documents
+            $table->string('verification_document')->nullable();
+            $table->text('verification_notes')->nullable();
+            $table->timestamp('rejected_at')->nullable();
+            $table->text('rejection_reason')->nullable();
+            $table->string('business_license')->nullable();
+            $table->string('id_document')->nullable();
+            
             $table->timestamps();
         });
     }

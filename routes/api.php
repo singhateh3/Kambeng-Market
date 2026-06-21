@@ -2,12 +2,21 @@
 
 // routes/api.php
 
+use App\Http\Controllers\Admin\AdminDisputeController;
+use App\Http\Controllers\Admin\AdminOrderController;
+use App\Http\Controllers\Admin\AdminProductController;
+use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Admin\FarmerVerificationController;
+use App\Http\Controllers\Admin\AdminUserController;
+
+
+use App\Http\Controllers\Admin\AdminFarmerVerificationController;
+
+
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FarmerProfileController;
-use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\OrderController;
-use App\Http\Controllers\Api\AdminUserController;
-use App\Http\Controllers\Api\AdminDashboardController;
+use App\Http\Controllers\Api\ProductController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -15,6 +24,40 @@ use Illuminate\Support\Facades\Route;
 | API Routes
 |--------------------------------------------------------------------------
 */
+// Admin routes (protected by auth and admin middleware)
+
+// routes/api.php
+
+
+// Admin routes
+Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+    
+    // Farmer Verification Routes
+    Route::prefix('farmers')->group(function () {
+        Route::get('/verification/pending', [AdminFarmerVerificationController::class, 'pending']);
+        Route::get('/verification/statistics', [AdminFarmerVerificationController::class, 'statistics']);
+        Route::get('/verification/{farmer}', [AdminFarmerVerificationController::class, 'show']);
+        Route::post('/verification/{farmer}/approve', [AdminFarmerVerificationController::class, 'approve']);
+        Route::post('/verification/{farmer}/reject', [AdminFarmerVerificationController::class, 'reject']);
+        Route::post('/verification/bulk-approve', [AdminFarmerVerificationController::class, 'bulkApprove']);
+        Route::post('/verification/{farmer}/upload-document', [AdminFarmerVerificationController::class, 'uploadDocument']);
+        Route::get('/', [AdminFarmerVerificationController::class, 'index']);
+    });
+
+     // User Management
+    Route::prefix('users')->group(function () {
+        Route::get('/', [AdminUserController::class, 'index']);
+        Route::get('/{user}', [AdminUserController::class, 'show']);
+        Route::put('/{user}/role', [AdminUserController::class, 'updateRole']);
+        Route::post('/{user}/verify', [AdminUserController::class, 'verifyFarmer']);
+        Route::patch('/{user}/toggle-status', [AdminUserController::class, 'toggleStatus']);
+        Route::delete('/{user}', [AdminUserController::class, 'destroy']);
+    });
+    
+});
+
+
+
 
 // Public routes (no authentication required)
 Route::post('/register', [AuthController::class, 'register']);
@@ -56,12 +99,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/products/{product}/photos', [ProductController::class, 'addPhotos']);
     
     // Order routes
-    // Route::get('/orders', [OrderController::class, 'index']);
-    // Route::post('/orders', [OrderController::class, 'store']);
-    // Route::get('/orders/{order}', [OrderController::class, 'show']);
-    // Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
+    Route::get('/orders', [OrderController::class, 'index']);
+    Route::post('/orders', [OrderController::class, 'store']);
+    Route::get('/orders/{order}', [OrderController::class, 'show']);
+    Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
     
     // Review routes
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/farmer/request-verification', [FarmerVerificationController::class, 'requestVerification']);
+    Route::get('/farmer/verification-status', [FarmerVerificationController::class, 'status']);
 });
 
 // Public farmer profile routes

@@ -9,7 +9,6 @@ use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Hash;
 
 class AdminUserController extends Controller
 {
@@ -29,10 +28,10 @@ class AdminUserController extends Controller
                       ->orWhere('phone', 'like', "%{$search}%");
                 });
             })
-            ->when($request->verified, function ($query) {
+            ->when($request->verified === '1', function ($query) {
                 return $query->whereNotNull('verified_at');
             })
-            ->when($request->unverified, function ($query) {
+            ->when($request->verified === '0', function ($query) {
                 return $query->whereNull('verified_at');
             });
 
@@ -70,6 +69,14 @@ class AdminUserController extends Controller
             'role' => 'required|in:farmer,buyer,admin',
         ]);
 
+        // Prevent admin from changing their own role
+        if ($request->user()->id === $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot change your own role',
+            ], 422);
+        }
+
         $user->update(['role' => $request->role]);
 
         return response()->json([
@@ -91,13 +98,14 @@ class AdminUserController extends Controller
             ], 422);
         }
 
-        $user->update([
-            'verified_at' => now(),
-        ]);
+        if ($user->isVerified()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Farmer is already verified',
+            ], 422);
+        }
 
-        $user->farmerProfile()->update([
-            'id_verified' => true,
-        ]);
+        $user->approveVerification();
 
         return response()->json([
             'success' => true,
@@ -107,7 +115,7 @@ class AdminUserController extends Controller
     }
 
     /**
-     * Suspend/activate a user
+     * Toggle user status (activate/suspend)
      */
     public function toggleStatus(Request $request, User $user): JsonResponse
     {
@@ -115,12 +123,19 @@ class AdminUserController extends Controller
             'is_active' => 'required|boolean',
         ]);
 
-        // You would need to add an 'is_active' column to users table
-        // $user->update(['is_active' => $request->is_active]);
+        // Prevent admin from toggling their own status
+        if ($request->user()->id === $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot change your own status',
+            ], 422);
+        }
+
+        $user->update(['is_active' => $request->is_active]);
 
         return response()->json([
             'success' => true,
-            'message' => $request->is_active ? 'User activated' : 'User suspended',
+            'message' => $request->is_active ? 'User activated successfully' : 'User suspended successfully',
             'data' => new UserResource($user),
         ]);
     }
@@ -128,8 +143,16 @@ class AdminUserController extends Controller
     /**
      * Delete a user
      */
-    public function destroy(User $user): JsonResponse
+    public function destroy(Request $request, User $user): JsonResponse
     {
+        // Prevent admin from deleting themselves
+        if ($request->user()->id === $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You cannot delete your own account',
+            ], 422);
+        }
+
         // Delete related data
         if ($user->farmerProfile) {
             $user->farmerProfile->delete();
@@ -140,29 +163,6 @@ class AdminUserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'User deleted successfully',
-        ]);
-    }
-
-    /**
-     * Get farmers pending verification
-     */
-    public function pendingVerification(): JsonResponse
-    {
-        $farmers = User::where('role', 'farmer')
-            ->whereNull('verified_at')
-            ->with('farmerProfile')
-            ->latest()
-            ->paginate(20);
-
-        return response()->json([
-            'success' => true,
-            'data' => UserResource::collection($farmers),
-            'meta' => [
-                'current_page' => $farmers->currentPage(),
-                'last_page' => $farmers->lastPage(),
-                'per_page' => $farmers->perPage(),
-                'total' => $farmers->total(),
-            ],
         ]);
     }
 }

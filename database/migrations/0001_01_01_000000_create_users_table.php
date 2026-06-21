@@ -19,7 +19,12 @@ return new class extends Migration
             $table->string('location')->nullable();
             $table->enum('role', ['farmer', 'admin', 'buyer'])->default('farmer');
             $table->string('avatar')->nullable();
-            $table->string('verified_at')->nullable();
+            
+            // Verification fields
+            $table->timestamp('verified_at')->nullable(); // Changed from string to timestamp
+            $table->timestamp('verification_requested_at')->nullable();
+            $table->enum('verification_status', ['pending', 'approved', 'rejected'])->default('pending');
+            
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
