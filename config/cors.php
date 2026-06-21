@@ -1,10 +1,11 @@
 <?php
 
 // config/cors.php
+
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', '*'],
     'allowed_methods' => ['*'],
-    'allowed_origins' => ['http://localhost:5173'], // Your frontend URL
+    'allowed_origins' => ['*'], // Allow all origins for development
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],

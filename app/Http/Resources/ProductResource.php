@@ -1,4 +1,3 @@
-// app/Http/Resources/ProductResource.php
 <?php
 
 namespace App\Http\Resources;

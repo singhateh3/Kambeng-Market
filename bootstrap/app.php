@@ -16,28 +16,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Register middleware aliases (for use in routes)
+        // Add CORS middleware globally
+        $middleware->append(CorsMiddleware::class);
+        
+        // Register middleware aliases
         $middleware->alias([
             'admin' => AdminMiddleware::class,
-            'cors' => \App\Http\Middleware\CorsMiddleware::class,
         ]);
         
-        // Add middleware to API group
+        // Add Sanctum to API group
         $middleware->api(prepend: [
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
-        
-        // Add middleware to Web group
-        $middleware->web(append: [
-            \App\Http\Middleware\HandleInertiaRequests::class,
-        ]);
-        
-        // Register global middleware (runs on every request)
-        // $middleware->append(\App\Http\Middleware\TrustProxies::class);
-        // $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
-        
-        // Remove default middleware if needed
-        // $middleware->remove(\Illuminate\Foundation\Http\Middleware\ValidatePostSize::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Custom exception handling
