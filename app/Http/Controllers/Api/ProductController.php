@@ -19,20 +19,25 @@ class ProductController extends Controller
      * Upload photos from the request and return stored paths/URLs.
      */
     private function uploadPhotos(Request $request): array
-    {
-        $photos = [];
+{
+    $photos = [];
 
-        if ($request->hasFile('photos')) {
-            foreach ($request->file('photos') as $file) {
-                if ($file && $file->isValid()) {
-                    $path = $file->store('products', 'public');
-                    $photos[] = Storage::url($path);
-                }
+    if ($request->hasFile('photos')) {
+        foreach ($request->file('photos') as $file) {
+            if ($file && $file->isValid()) {
+                // Store the file
+                $path = $file->store('products', 'public');
+                // Store as /storage/products/filename.jpg
+                $photos[] = '/storage/' . $path;
             }
         }
-
-        return $photos;
     }
+
+    // Log what was stored
+    \Log::info('Photos uploaded:', $photos);
+
+    return $photos;
+}
 
     /**
      * Delete photos given an array of URLs or paths.
@@ -104,6 +109,7 @@ class ProductController extends Controller
         $product = Product::create([
             'farmer_id' => $request->user()->id,
             'name' => $validated['name'],
+            'variety' => $validated['variety'] ?? null,
             'category' => $validated['category'],
             'quantity' => $validated['quantity'],
             'unit' => $validated['unit'],

@@ -19,6 +19,7 @@ class Order extends Model
         'special_instructions',
         'delivery_method',
         'delivery_deadline',
+        'pickup_date',
         'order_date',
     ];
 
@@ -27,6 +28,7 @@ class Order extends Model
         'total_price' => 'decimal:2',
         'order_date' => 'datetime',
         'delivery_deadline' => 'date',
+        'pickup_date' => 'date',
     ];
 
     /**

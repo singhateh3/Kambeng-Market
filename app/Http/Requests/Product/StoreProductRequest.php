@@ -17,6 +17,7 @@ class StoreProductRequest extends FormRequest
         return [
             'name' => 'required|string|max:255',
             'category' => 'required|string|max:100',
+            'variety' => 'nullable|string|max:100',
             'quantity' => 'required|numeric|min:0.01',
             'unit' => 'required|in:kg,bunch,pile,bag',
             'price' => 'required|numeric|min:0.01',
@@ -32,6 +33,7 @@ class StoreProductRequest extends FormRequest
         return [
             'name.required' => 'Product name is required',
             'category.required' => 'Product category is required',
+            'variety.max' => 'Variety cannot exceed 100 characters',
             'quantity.required' => 'Quantity is required',
             'quantity.min' => 'Quantity must be greater than 0',
             'unit.required' => 'Unit of measurement is required',

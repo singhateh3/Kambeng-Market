@@ -13,6 +13,7 @@ class ProductResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'category' => $this->category,
+            'variety' => $this->variety,
             'quantity' => (float) $this->quantity,
             'unit' => $this->unit,
             'unit_display' => $this->getUnitDisplay(),
@@ -22,9 +23,7 @@ class ProductResource extends JsonResource
             'harvest_date_display' => $this->harvest_date?->format('M d, Y'),
             'expiry_date' => $this->expiry_date?->toISOString(),
             'expiry_date_display' => $this->expiry_date?->format('M d, Y'),
-            'photos' => $this->photos ? array_map(function ($photo) {
-                return asset($photo);
-            }, $this->photos) : [],
+            'photos' => $this->getPhotoUrls(),
             'status' => $this->status,
             'status_label' => $this->getStatusLabel(),
             'is_available' => $this->isAvailable(),
@@ -35,6 +34,46 @@ class ProductResource extends JsonResource
             'orders_count' => $this->whenCounted('orders'),
             'average_rating' => $this->when(isset($this->average_rating), $this->average_rating),
         ];
+    }
+
+    /**
+     * Get photo URLs with proper asset handling
+     */
+    protected function getPhotoUrls(): array
+    {
+        if (empty($this->photos)) {
+            return [];
+        }
+
+        // If photos is a string, decode it
+        $photos = $this->photos;
+        if (is_string($photos)) {
+            $photos = json_decode($photos, true);
+        }
+
+        if (!is_array($photos) || empty($photos)) {
+            return [];
+        }
+
+        return array_map(function ($photo) {
+            // If photo is already a full URL, return it
+            if (filter_var($photo, FILTER_VALIDATE_URL)) {
+                return $photo;
+            }
+
+            // If photo starts with /storage/, use asset helper
+            if (str_starts_with($photo, '/storage/')) {
+                return asset($photo);
+            }
+
+            // If photo is a relative path without /storage/, add it
+            if (!str_starts_with($photo, '/')) {
+                return asset('/storage/' . $photo);
+            }
+
+            // Default: use asset helper
+            return asset($photo);
+        }, $photos);
     }
 
     protected function getUnitDisplay(): string

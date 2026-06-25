@@ -14,6 +14,10 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\FarmerVerificationController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PublicController;
+
+
 
 /*
 |--------------------------------------------------------------------------
@@ -29,6 +33,8 @@ use Illuminate\Support\Facades\Route;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::get('/public/statistics', [PublicController::class, 'statistics']);
+
 
 // Public product routes (view only)
 Route::get('/products', [ProductController::class, 'index']);
@@ -43,11 +49,11 @@ Route::get('/farmers/{userId}/profile', [FarmerProfileController::class, 'public
 // ADMIN ROUTES (Authentication + Admin role required)
 // ============================================
 Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
-    
+
     // Dashboard
     Route::get('/dashboard/statistics', [AdminDashboardController::class, 'statistics']);
     Route::get('/dashboard/charts', [AdminDashboardController::class, 'chartData']);
-    
+
     // User Management
     Route::prefix('users')->group(function () {
         Route::get('/', [AdminUserController::class, 'index']);
@@ -57,7 +63,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         Route::patch('/{user}/toggle-status', [AdminUserController::class, 'toggleStatus']);
         Route::delete('/{user}', [AdminUserController::class, 'destroy']);
     });
-    
+
     // Farmer Verification Routes
     Route::prefix('farmers')->group(function () {
         Route::get('/', [AdminFarmerVerificationController::class, 'index']);
@@ -69,7 +75,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         Route::post('/verification/bulk-approve', [AdminFarmerVerificationController::class, 'bulkApprove']);
         Route::post('/verification/{farmer}/upload-document', [AdminFarmerVerificationController::class, 'uploadDocument']);
     });
-    
+
     // Product Management
     Route::prefix('products')->group(function () {
         Route::get('/', [AdminProductController::class, 'index']);
@@ -77,7 +83,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         Route::delete('/{product}', [AdminProductController::class, 'destroy']);
         Route::post('/bulk-delete', [AdminProductController::class, 'bulkDelete']);
     });
-    
+
     // Order Management
     Route::prefix('orders')->group(function () {
         Route::get('/', [AdminOrderController::class, 'index']);
@@ -85,7 +91,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         Route::patch('/{order}/status', [AdminOrderController::class, 'updateStatus']);
         Route::delete('/{order}', [AdminOrderController::class, 'destroy']);
     });
-    
+
     // Dispute Management
     Route::prefix('disputes')->group(function () {
         Route::get('/', [AdminDisputeController::class, 'index']);
@@ -97,13 +103,13 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
 // PROTECTED ROUTES (Authentication required)
 // ============================================
 Route::middleware('auth:sanctum')->group(function () {
-    
+
     // Auth routes
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
     Route::put('/user/profile', [AuthController::class, 'updateProfile']);
     Route::post('/user/refresh-token', [AuthController::class, 'refreshToken']);
-    
+
     // Farmer Profile routes
     Route::prefix('farmer')->group(function () {
         Route::get('/profile', [FarmerProfileController::class, 'show']);
@@ -112,14 +118,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/profile/avatar', [FarmerProfileController::class, 'uploadAvatar']);
         Route::get('/profile/statistics', [FarmerProfileController::class, 'statistics']);
     });
-    
+
     // Farmer verification requests
     Route::post('/farmer/request-verification', [FarmerVerificationController::class, 'requestVerification']);
     Route::get('/farmer/verification-status', [FarmerVerificationController::class, 'status']);
-    
+
     // Product routes (authenticated users)
+    // IMPORTANT: Specific routes MUST come BEFORE wildcard routes
+    Route::get('/my-products', [ProductController::class, 'myProducts']); // <-- This must be BEFORE /products/{product}
+
     Route::prefix('products')->group(function () {
-        Route::get('/my-products', [ProductController::class, 'myProducts']);
         Route::post('/', [ProductController::class, 'store']);
         Route::put('/{product}', [ProductController::class, 'update']);
         Route::patch('/{product}/status', [ProductController::class, 'updateStatus']);
@@ -127,17 +135,26 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{product}/photo', [ProductController::class, 'deletePhoto']);
         Route::post('/{product}/photos', [ProductController::class, 'addPhotos']);
     });
-    
+
     // Order routes (authenticated users)
     Route::prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
         Route::post('/', [OrderController::class, 'store']);
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::patch('/{order}/status', [OrderController::class, 'updateStatus']);
+        Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
+        Route::post('/{order}/review', [OrderController::class, 'review']);
     });
-    
-    // Review routes
-    Route::post('/orders/{order}/review', [ReviewController::class, 'store']);
+
+    // Notification routes
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [NotificationController::class, 'index']);
+        Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+        Route::post('/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+        Route::delete('/delete-read', [NotificationController::class, 'deleteRead']);
+        Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);
+        Route::delete('/{notification}', [NotificationController::class, 'destroy']);
+    });
 });
 
 // ============================================

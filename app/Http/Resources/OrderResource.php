@@ -1,4 +1,3 @@
-// app/Http/Resources/OrderResource.php
 <?php
 
 namespace App\Http\Resources;
@@ -22,6 +21,9 @@ class OrderResource extends JsonResource
             'delivery_method' => $this->delivery_method,
             'delivery_method_label' => $this->getDeliveryMethodLabel(),
             'delivery_deadline' => $this->delivery_deadline?->toISOString(),
+            'delivery_deadline_display' => $this->delivery_deadline?->format('M d, Y'),
+            'pickup_date' => $this->pickup_date?->toISOString(),
+            'pickup_date_display' => $this->pickup_date?->format('M d, Y'),
             'order_date' => $this->order_date?->toISOString(),
             'order_date_display' => $this->order_date?->format('M d, Y H:i'),
             'created_at' => $this->created_at?->toISOString(),

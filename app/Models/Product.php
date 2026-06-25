@@ -15,6 +15,7 @@ class Product extends Model
         'farmer_id',
         'name',
         'category',
+        'variety',
         'quantity',
         'unit',
         'price',
@@ -116,5 +117,60 @@ class Product extends Model
             'sold' => 'Sold Out',
             default => ucfirst($this->status),
         };
+    }
+
+    /**
+     * Get photos attribute with full URLs
+     */
+    public function getPhotosAttribute($value)
+    {
+        if (is_null($value)) {
+            return [];
+        }
+        
+        // If it's already an array, use it directly
+        $photos = is_array($value) ? $value : json_decode($value, true);
+        
+        if (!is_array($photos) || empty($photos)) {
+            return [];
+        }
+        
+        // Convert storage paths to full URLs
+        return array_map(function ($photo) {
+            // If it's already a full URL, return as is
+            if (filter_var($photo, FILTER_VALIDATE_URL)) {
+                return $photo;
+            }
+            
+            // If it starts with /storage/, convert to full URL
+            if (str_starts_with($photo, '/storage/')) {
+                return asset($photo);
+            }
+            
+            // If it starts with storage/ (without slash), add slash
+            if (str_starts_with($photo, 'storage/')) {
+                return asset('/' . $photo);
+            }
+            
+            // If it's a relative path, add storage prefix
+            if (!str_starts_with($photo, '/')) {
+                return asset('/storage/' . $photo);
+            }
+            
+            // Default: use asset helper
+            return asset($photo);
+        }, $photos);
+    }
+
+    /**
+     * Set photos attribute
+     */
+    public function setPhotosAttribute($value)
+    {
+        if (is_array($value)) {
+            $this->attributes['photos'] = json_encode($value);
+        } else {
+            $this->attributes['photos'] = $value;
+        }
     }
 }
