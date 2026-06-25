@@ -1,0 +1,15 @@
+# .dockerignore
+vendor/
+node_modules/
+.env
+.git
+.gitignore
+README.md
+storage/
+tests/
+.dockerignore
+Dockerfile
+nginx.conf
+phpunit.xml
+.gitattributes
+.editorconfig
