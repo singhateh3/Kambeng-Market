@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\FarmerVerificationController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PublicController;
+use App\Http\Controllers\Api\ReviewController;
+
 
 
 
@@ -155,6 +157,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);
         Route::delete('/{notification}', [NotificationController::class, 'destroy']);
     });
+
+    // Review routes
+    Route::get('/products/{product}/reviews', [ReviewController::class, 'productReviews']);
+    Route::post('/orders/{order}/review', [ReviewController::class, 'store']);
+    Route::put('/reviews/{review}', [ReviewController::class, 'update']);
+    Route::delete('/reviews/{review}', [ReviewController::class, 'destroy']);
 });
 
 // ============================================
