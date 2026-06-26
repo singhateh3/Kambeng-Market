@@ -1,7 +1,8 @@
-# Dockerfile
+# Create a simpler Dockerfile
+cat > Dockerfile << 'EOF'
 FROM php:8.2-fpm
 
-# Install system dependencies
+# Install dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -10,27 +11,19 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     zip \
     unzip \
-    nginx \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Set working directory
-WORKDIR /var/www
+WORKDIR /app
 
-# Copy existing application directory contents
-COPY . /var/www
+# Copy files
+COPY . .
 
 # Install dependencies
 RUN composer install --no-dev --optimize-autoloader
-
-# Copy .env
-COPY .env .env
 
 # Generate key
 RUN php artisan key:generate
@@ -39,14 +32,12 @@ RUN php artisan key:generate
 RUN php artisan migrate --force
 
 # Set permissions
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
-RUN chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+RUN chown -R www-data:www-data storage bootstrap/cache
+RUN chmod -R 775 storage bootstrap/cache
 
-# Configure Nginx
-COPY nginx.conf /etc/nginx/nginx.conf
+# Expose port
+EXPOSE 8000
 
-# Expose port 80
-EXPOSE 80
-
-# Start PHP-FPM and Nginx
-CMD ["sh", "-c", "php-fpm & nginx -g 'daemon off;'"]
+# Start the server
+CMD php artisan serve --host=0.0.0.0 --port=8000
+EOF
