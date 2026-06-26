@@ -1,3 +1,4 @@
+# .dockerignore
 vendor/
 node_modules/
 .env
@@ -13,4 +14,7 @@ phpunit.xml
 .gitattributes
 .editorconfig
 .env.example
-EOF
+composer.lock
+package-lock.json
+.DS_Store
+Thumbs.db
