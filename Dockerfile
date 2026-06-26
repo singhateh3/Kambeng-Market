@@ -3,8 +3,16 @@ FROM php:8.2-fpm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    git curl libpng-dev libonig-dev libxml2-dev zip unzip nginx \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    nginx \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
@@ -28,37 +36,15 @@ RUN composer install --no-dev --optimize-autoloader --ignore-platform-reqs --no-
 RUN if [ ! -f .env ]; then cp .env.example .env || echo "APP_KEY=" > .env; fi
 
 # Generate application key
-RUN php artisan key:generate --force || echo "Key generation failed"
+RUN php artisan key:generate --force 2>/dev/null || echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env
 
 # Cache configurations
 RUN php artisan config:cache 2>/dev/null || true
 RUN php artisan route:cache 2>/dev/null || true
 RUN php artisan view:cache 2>/dev/null || true
 
-# Create nginx.conf
-RUN echo 'worker_processes 1; \
-    events { worker_connections 1024; } \
-    http { \
-    include /etc/nginx/mime.types; \
-    default_type application/octet-stream; \
-    sendfile on; \
-    keepalive_timeout 65; \
-    server { \
-    listen 80; \
-    server_name localhost; \
-    root /var/www/public; \
-    index index.php; \
-    location / { \
-    try_files $$uri $$uri/ /index.php?$$query_string; \
-    } \
-    location ~ \.php$ { \
-    fastcgi_pass 127.0.0.1:9000; \
-    fastcgi_index index.php; \
-    fastcgi_param SCRIPT_FILENAME $$document_root$$fastcgi_script_name; \
-    include fastcgi_params; \
-    } \
-    } \
-    }' > /etc/nginx/nginx.conf
+# Copy nginx.conf (using COPY instead of cat)
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Set permissions
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache && \
