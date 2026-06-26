@@ -16,23 +16,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Add CORS middleware globally (handles preflight requests)
-        $middleware->append(CorsMiddleware::class);
+        $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
 
-        // Register middleware aliases
         $middleware->alias([
             'admin' => AdminMiddleware::class,
-            'cors' => CorsMiddleware::class, // Add this alias for route usage
         ]);
 
-        // Add Sanctum to API group
         $middleware->api(prepend: [
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
-
-        // For Render, we might need to handle CORS for all requests
-        // If you're having CORS issues, uncomment this line:
-        // $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Custom exception handling for API routes
