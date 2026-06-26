@@ -23,8 +23,22 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www
 
-# Copy existing application directory contents
-COPY . /var/www
+# Copy application files
+COPY . .
+
+# Install dependencies WITHOUT scripts (this prevents the exit code 2 error)
+RUN composer install --no-dev --optimize-autoloader --no-scripts
+
+# Manually run post-autoload-dump script
+RUN composer run-script post-autoload-dump || true
+
+# Generate application key
+RUN php artisan key:generate
+
+# Cache configurations for production
+RUN php artisan config:cache || true
+RUN php artisan route:cache || true
+RUN php artisan view:cache || true
 
 # Create nginx.conf if missing (fallback)
 RUN if [ -f nginx.conf ]; then \
@@ -57,17 +71,6 @@ RUN if [ -f nginx.conf ]; then \
     } \
     }' > /etc/nginx/nginx.conf; \
     fi
-
-# Install dependencies (without dev packages)
-RUN composer install --no-dev --optimize-autoloader
-
-# Generate application key
-RUN php artisan key:generate
-
-# Cache configurations for production
-RUN php artisan config:cache && \
-    php artisan route:cache && \
-    php artisan view:cache
 
 # Set permissions
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache && \
