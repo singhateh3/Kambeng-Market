@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     nginx \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
+# Install PHP extensions required by Laravel
 RUN docker-php-ext-install \
     pdo_mysql \
     mbstring \
@@ -25,14 +25,16 @@ WORKDIR /var/www
 # Copy application code
 COPY . .
 
-# Install dependencies (SAFE)
+# Install PHP dependencies (IMPORTANT: clean & deterministic)
 RUN composer install --no-dev --optimize-autoloader
 
-# Ensure storage permissions
+# Set correct permissions
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache && \
     chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
-# Create Nginx config
+# ----------------------------
+# NGINX CONFIG
+# ----------------------------
 RUN echo 'worker_processes 1;' > /etc/nginx/nginx.conf && \
     echo 'events { worker_connections 1024; }' >> /etc/nginx/nginx.conf && \
     echo 'http {' >> /etc/nginx/nginx.conf && \
@@ -60,7 +62,7 @@ RUN echo 'worker_processes 1;' > /etc/nginx/nginx.conf && \
     echo '    }' >> /etc/nginx/nginx.conf && \
     echo '}' >> /etc/nginx/nginx.conf
 
-# Expose port
+# Expose HTTP port
 EXPOSE 80
 
 # Start services
