@@ -26,8 +26,7 @@ WORKDIR /var/www
 COPY . .
 
 # Install PHP dependencies (IMPORTANT: clean & deterministic)
-RUN composer install --no-dev --optimize-autoloader
-
+RUN composer install --no-dev --no-scripts --optimize-autoloader
 # Set correct permissions
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache && \
     chmod -R 775 /var/www/storage /var/www/bootstrap/cache
