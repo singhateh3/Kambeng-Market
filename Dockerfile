@@ -23,28 +23,45 @@ RUN docker-php-ext-install \
 # ----------------------------
 # Install Composer
 # ----------------------------
-RUN curl -sS https://getcomposer.org/installer | php -- \
-    --install-dir=/usr/local/bin --filename=composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
 
 # ----------------------------
-# Copy project files
+# Copy composer files FIRST (better layer caching)
+# ----------------------------
+COPY composer.json composer.lock ./
+
+# ----------------------------
+# Install dependencies
+# MEMORY_LIMIT=-1 prevents OOM kills during install
+# ----------------------------
+RUN COMPOSER_MEMORY_LIMIT=-1 composer install \
+    --no-dev \
+    --prefer-dist \
+    --no-interaction \
+    --no-scripts \
+    --no-autoloader \
+    --ignore-platform-reqs
+
+# ----------------------------
+# Copy the rest of the project
 # ----------------------------
 COPY . .
 
 # ----------------------------
-# Install dependencies (SAFE)
-# IMPORTANT: no scripts, no Laravel boot during build
+# Generate optimized autoloader now that all files exist
 # ----------------------------
-RUN composer install --no-dev --prefer-dist --no-interaction
+RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize --no-dev
 
 # ----------------------------
-# Permissions (Laravel requires this)
+# Permissions
 # ----------------------------
 RUN mkdir -p storage bootstrap/cache && \
     chown -R www-data:www-data storage bootstrap/cache && \
     chmod -R 775 storage bootstrap/cache
+
+# ... rest of your nginx config and CMD unchanged
 
 # ----------------------------
 # NGINX CONFIG
