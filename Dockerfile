@@ -21,9 +21,9 @@ RUN if [ ! -f .env ]; then cp .env.example .env || echo "APP_KEY=" > .env; fi
 
 RUN php artisan key:generate --force 2>/dev/null || echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env
 
-RUN php artisan config:cache 2>/dev/null || true
-RUN php artisan route:cache 2>/dev/null || true
-RUN php artisan view:cache 2>/dev/null || true
+# RUN php artisan config:cache 2>/dev/null || true
+# RUN php artisan route:cache 2>/dev/null || true
+# RUN php artisan view:cache 2>/dev/null || true
 
 RUN echo 'worker_processes 1;' > /etc/nginx/nginx.conf && \
     echo '' >> /etc/nginx/nginx.conf && \
