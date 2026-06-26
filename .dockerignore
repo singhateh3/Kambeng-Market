@@ -14,6 +14,6 @@ phpunit.xml
 .gitattributes
 .editorconfig
 .env.example
-composer.lock
+package-lock.json
 .DS_Store
 Thumbs.db
