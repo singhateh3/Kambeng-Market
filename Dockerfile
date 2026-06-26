@@ -1,13 +1,17 @@
 FROM php:8.2-fpm
 
-# Install system dependencies
+# ----------------------------
+# System dependencies
+# ----------------------------
 RUN apt-get update && apt-get install -y \
     git curl unzip zip \
     libpng-dev libonig-dev libxml2-dev \
     nginx \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions required by Laravel
+# ----------------------------
+# PHP extensions
+# ----------------------------
 RUN docker-php-ext-install \
     pdo_mysql \
     mbstring \
@@ -16,20 +20,31 @@ RUN docker-php-ext-install \
     bcmath \
     gd
 
+# ----------------------------
 # Install Composer
+# ----------------------------
 RUN curl -sS https://getcomposer.org/installer | php -- \
     --install-dir=/usr/local/bin --filename=composer
 
 WORKDIR /var/www
 
-# Copy application code
+# ----------------------------
+# Copy project files
+# ----------------------------
 COPY . .
 
-# Install PHP dependencies (IMPORTANT: clean & deterministic)
-RUN composer install --no-dev --no-scripts --optimize-autoloader
-# Set correct permissions
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache && \
-    chmod -R 775 /var/www/storage /var/www/bootstrap/cache
+# ----------------------------
+# Install dependencies (SAFE)
+# IMPORTANT: no scripts, no Laravel boot during build
+# ----------------------------
+RUN composer install --no-dev --prefer-dist --no-interaction
+
+# ----------------------------
+# Permissions (Laravel requires this)
+# ----------------------------
+RUN mkdir -p storage bootstrap/cache && \
+    chown -R www-data:www-data storage bootstrap/cache && \
+    chmod -R 775 storage bootstrap/cache
 
 # ----------------------------
 # NGINX CONFIG
@@ -61,8 +76,12 @@ RUN echo 'worker_processes 1;' > /etc/nginx/nginx.conf && \
     echo '    }' >> /etc/nginx/nginx.conf && \
     echo '}' >> /etc/nginx/nginx.conf
 
-# Expose HTTP port
+# ----------------------------
+# Expose port
+# ----------------------------
 EXPOSE 80
 
-# Start services
+# ----------------------------
+# Start PHP-FPM + Nginx
+# ----------------------------
 CMD ["sh", "-c", "php-fpm & nginx -g 'daemon off;'"]
