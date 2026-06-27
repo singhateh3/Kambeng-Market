@@ -62,7 +62,7 @@ class NotificationService
                 'total_price' => $order->total_price,
             ],
             '🛒',
-            "/orders/{$order->id}" // Link to order details
+            "/app/orders/{$order->id}" // Fixed: Added /app prefix
         );
     }
 
@@ -82,7 +82,7 @@ class NotificationService
                 'farmer_id' => $order->product->farmer_id,
             ],
             '✅',
-            "/orders/{$order->id}"
+            "/app/orders/{$order->id}" // Fixed: Added /app prefix
         );
     }
 
@@ -101,7 +101,7 @@ class NotificationService
                 'product_id' => $order->product_id,
             ],
             '🚚',
-            "/orders/{$order->id}"
+            "/app/orders/{$order->id}" // Fixed: Added /app prefix
         );
     }
 
@@ -120,7 +120,7 @@ class NotificationService
                 'product_id' => $order->product_id,
             ],
             '📦',
-            "/orders/{$order->id}"
+            "/app/orders/{$order->id}" // Fixed: Added /app prefix
         );
     }
 
@@ -143,7 +143,7 @@ class NotificationService
                 'product_id' => $order->product_id,
             ],
             '❌',
-            "/orders/{$order->id}"
+            "/app/orders/{$order->id}" // Fixed: Added /app prefix
         );
     }
 
@@ -165,7 +165,7 @@ class NotificationService
                 'farm_location' => $farmer->farmerProfile?->farm_location ?? 'N/A',
             ],
             '👨‍🌾',
-            "/admin/farmers/verification"
+            "/app/admin/farmers/verification" // Fixed: Added /app prefix
         );
     }
 
@@ -181,7 +181,7 @@ class NotificationService
             'Your farmer account has been verified. You can now start listing products.',
             [],
             '✅',
-            '/dashboard'
+            "/app/dashboard" // Fixed: Added /app prefix
         );
     }
 
@@ -197,7 +197,7 @@ class NotificationService
             "Your farmer account verification was rejected. Reason: {$reason}",
             ['reason' => $reason],
             '❌',
-            '/profile'
+            "/app/profile" // Fixed: Added /app prefix
         );
     }
 
@@ -216,7 +216,7 @@ class NotificationService
                 'farmer_id' => $product->farmer_id,
             ],
             '🌾',
-            "/products/{$product->id}"
+            "/app/products/{$product->id}" // Fixed: Added /app prefix
         );
     }
 
@@ -235,7 +235,27 @@ class NotificationService
                 'quantity' => $product->quantity,
             ],
             '⚠️',
-            "/products"
+            "/app/products" // Fixed: Added /app prefix
+        );
+    }
+
+    /**
+     * Send new review notification to farmer
+     */
+    public function newReview(User $farmer, $order, $review): Notification
+    {
+        return $this->send(
+            $farmer,
+            'new_review',
+            'New Review Received! ⭐',
+            "{$order->buyer->name} left a {$review->rating}⭐ review for your product {$order->product->name}.",
+            [
+                'order_id' => $order->id,
+                'product_id' => $order->product_id,
+                'rating' => $review->rating,
+            ],
+            '⭐',
+            "/app/orders/{$order->id}" // Fixed: Added /app prefix
         );
     }
 }
