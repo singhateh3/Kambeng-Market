@@ -50,13 +50,14 @@ COPY . .
 
 # ----------------------------
 # Generate optimized autoloader
-# --classmap-authoritative avoids booting Laravel during dump
+# --no-scripts prevents package:discover from running at build time
+# (artisan can't boot without .env)
 # ----------------------------
 RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload \
     --optimize \
-    --classmap-authoritative \
     --no-dev \
-    --ignore-platform-reqs
+    --ignore-platform-reqs \
+    --no-scripts
 
 # ----------------------------
 # Permissions
@@ -101,6 +102,7 @@ RUN echo 'worker_processes 1;' > /etc/nginx/nginx.conf && \
 EXPOSE 80
 
 # ----------------------------
-# Start PHP-FPM + Nginx
+# Start: discover packages, then boot PHP-FPM + Nginx
+# package:discover runs at startup when .env is available
 # ----------------------------
-CMD ["sh", "-c", "php-fpm & nginx -g 'daemon off;'"]
+CMD ["sh", "-c", "php artisan package:discover --ansi && php-fpm & nginx -g 'daemon off;'"]
