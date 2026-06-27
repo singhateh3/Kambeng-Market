@@ -105,4 +105,4 @@ EXPOSE 80
 # Start: discover packages, then boot PHP-FPM + Nginx
 # package:discover runs at startup when .env is available
 # ----------------------------
-CMD ["sh", "-c", "php artisan package:discover --ansi && php-fpm & nginx -g 'daemon off;'"]
+CMD ["sh", "-c", "php artisan package:discover --ansi || true && php-fpm -D && nginx -g 'daemon off;'"]
