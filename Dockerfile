@@ -104,4 +104,4 @@ EXPOSE 80
 # ----------------------------
 # Start: discover packages, then boot PHP-FPM + Nginx
 # ----------------------------
-CMD ["sh", "-c", "php artisan config:cache && php artisan migrate --force && php artisan db:seed --force && php artisan package:discover --ansi || true && php-fpm -D && nginx -g 'daemon off;'"]
+CMD ["sh", "-c", "php artisan config:cache && php artisan migrate --force && php artisan package:discover --ansi || true && php-fpm -D && nginx -g 'daemon off;'"]
