@@ -6,6 +6,7 @@ FROM php:8.4-fpm
 RUN apt-get update && apt-get install -y \
     git curl unzip zip \
     libpng-dev libonig-dev libxml2-dev \
+    libpq-dev \
     nginx \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -51,8 +52,6 @@ COPY . .
 
 # ----------------------------
 # Generate optimized autoloader
-# --no-scripts prevents package:discover from running at build time
-# (artisan can't boot without .env)
 # ----------------------------
 RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload \
     --optimize \
@@ -104,6 +103,5 @@ EXPOSE 80
 
 # ----------------------------
 # Start: discover packages, then boot PHP-FPM + Nginx
-# package:discover runs at startup when .env is available
 # ----------------------------
 CMD ["sh", "-c", "php artisan config:cache && php artisan migrate --force && php artisan package:discover --ansi || true && php-fpm -D && nginx -g 'daemon off;'"]
