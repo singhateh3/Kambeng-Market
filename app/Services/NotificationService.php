@@ -11,6 +11,28 @@ use Illuminate\Support\Facades\Log;
 class NotificationService
 {
     /**
+     * Get the appropriate base URL for a user
+     */
+    private function getBaseUrl(User $user): string
+    {
+        // Check if user is admin
+        if ($user->hasRole('admin') || $user->isAdmin()) {
+            return '/app/admin'; // Updated to match your routing structure
+        }
+        return '/app';
+    }
+
+    /**
+     * Generate a notification link based on user role
+     */
+    private function generateLink(User $user, string $path): string
+    {
+        $baseUrl = $this->getBaseUrl($user);
+        $cleanPath = ltrim($path, '/');
+        return "{$baseUrl}/{$cleanPath}";
+    }
+
+    /**
      * Send a notification to a user
      */
     public function send(
@@ -22,6 +44,11 @@ class NotificationService
         ?string $icon = null,
         ?string $link = null
     ): Notification {
+        // If link is provided, ensure it has the correct base URL for the user
+        if ($link && !str_starts_with($link, '/app')) {
+            $link = $this->generateLink($user, $link);
+        }
+
         return Notification::create([
             'user_id' => $user->id,
             'type' => $type,
@@ -62,7 +89,7 @@ class NotificationService
                 'total_price' => $order->total_price,
             ],
             '🛒',
-            "/app/orders/{$order->id}" // Fixed: Added /app prefix
+            "/app/orders/{$order->id}"
         );
     }
 
@@ -82,7 +109,7 @@ class NotificationService
                 'farmer_id' => $order->product->farmer_id,
             ],
             '✅',
-            "/app/orders/{$order->id}" // Fixed: Added /app prefix
+            "/app/orders/{$order->id}"
         );
     }
 
@@ -101,7 +128,7 @@ class NotificationService
                 'product_id' => $order->product_id,
             ],
             '🚚',
-            "/app/orders/{$order->id}" // Fixed: Added /app prefix
+            "/app/orders/{$order->id}"
         );
     }
 
@@ -120,7 +147,7 @@ class NotificationService
                 'product_id' => $order->product_id,
             ],
             '📦',
-            "/app/orders/{$order->id}" // Fixed: Added /app prefix
+            "/app/orders/{$order->id}"
         );
     }
 
@@ -143,7 +170,7 @@ class NotificationService
                 'product_id' => $order->product_id,
             ],
             '❌',
-            "/app/orders/{$order->id}" // Fixed: Added /app prefix
+            "/app/orders/{$order->id}"
         );
     }
 
@@ -165,7 +192,7 @@ class NotificationService
                 'farm_location' => $farmer->farmerProfile?->farm_location ?? 'N/A',
             ],
             '👨‍🌾',
-            "/app/admin/farmers/verification" // Fixed: Added /app prefix
+            "/app/admin/farmers/verification" // Updated to match your routing
         );
     }
 
@@ -181,7 +208,7 @@ class NotificationService
             'Your farmer account has been verified. You can now start listing products.',
             [],
             '✅',
-            "/app/dashboard" // Fixed: Added /app prefix
+            "/app/dashboard"
         );
     }
 
@@ -197,7 +224,7 @@ class NotificationService
             "Your farmer account verification was rejected. Reason: {$reason}",
             ['reason' => $reason],
             '❌',
-            "/app/profile" // Fixed: Added /app prefix
+            "/app/profile"
         );
     }
 
@@ -216,7 +243,7 @@ class NotificationService
                 'farmer_id' => $product->farmer_id,
             ],
             '🌾',
-            "/app/products/{$product->id}" // Fixed: Added /app prefix
+            "/app/products/{$product->id}"
         );
     }
 
@@ -235,7 +262,7 @@ class NotificationService
                 'quantity' => $product->quantity,
             ],
             '⚠️',
-            "/app/products" // Fixed: Added /app prefix
+            "/app/products"
         );
     }
 
@@ -255,7 +282,7 @@ class NotificationService
                 'rating' => $review->rating,
             ],
             '⭐',
-            "/app/orders/{$order->id}" // Fixed: Added /app prefix
+            "/app/orders/{$order->id}"
         );
     }
 }
