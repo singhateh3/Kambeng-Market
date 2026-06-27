@@ -19,25 +19,25 @@ class ProductController extends Controller
      * Upload photos from the request and return stored paths/URLs.
      */
     private function uploadPhotos(Request $request): array
-{
-    $photos = [];
+    {
+        $photos = [];
 
-    if ($request->hasFile('photos')) {
-        foreach ($request->file('photos') as $file) {
-            if ($file && $file->isValid()) {
-                // Store the file
-                $path = $file->store('products', 'public');
-                // Store as /storage/products/filename.jpg
-                $photos[] = '/storage/' . $path;
+        if ($request->hasFile('photos')) {
+            foreach ($request->file('photos') as $file) {
+                if ($file && $file->isValid()) {
+                    // Store the file
+                    $path = $file->store('products', 'public');
+                    // Store without leading slash - let the resource add it
+                    $photos[] = 'storage/' . $path;
+                }
             }
         }
+
+        // Log what was stored
+        \Log::info('Photos uploaded:', $photos);
+
+        return $photos;
     }
-
-    // Log what was stored
-    \Log::info('Photos uploaded:', $photos);
-
-    return $photos;
-}
 
     /**
      * Delete photos given an array of URLs or paths.
@@ -63,27 +63,27 @@ class ProductController extends Controller
         $query = Product::with(['farmer' => function ($query) {
             $query->select('id', 'name', 'phone', 'location', 'avatar');
         }])
-        ->withCount('orders')
-        ->active()
-        ->when($request->category, function ($query, $category) {
-            // Support filtering by single category or array of categories
-            if (is_array($category)) {
-                return $query->whereIn('category', $category);
-            }
+            ->withCount('orders')
+            ->active()
+            ->when($request->category, function ($query, $category) {
+                // Support filtering by single category or array of categories
+                if (is_array($category)) {
+                    return $query->whereIn('category', $category);
+                }
 
-            return $query->where('category', '=', $category);
-        })
-        ->when($request->region, function ($query, $region) {
-            return $query->whereHas('farmer', function ($query) use ($region) {
-                $query->where('location', 'like', "%{$region}%");
+                return $query->where('category', '=', $category);
+            })
+            ->when($request->region, function ($query, $region) {
+                return $query->whereHas('farmer', function ($query) use ($region) {
+                    $query->where('location', 'like', "%{$region}%");
+                });
+            })
+            ->when($request->search, function ($query, $search) {
+                return $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('category', 'like', "%{$search}%");
+                });
             });
-        })
-        ->when($request->search, function ($query, $search) {
-            return $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('category', 'like', "%{$search}%");
-            });
-        });
 
         // Sorting
         $sortBy = $request->sort_by ?? 'created_at';

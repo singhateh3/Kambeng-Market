@@ -88,7 +88,7 @@ class Product extends Model
     public function scopeActive($query)
     {
         return $query->where('status', 'active')
-                     ->where('expiry_date', '>=', now()->startOfDay());
+            ->where('expiry_date', '>=', now()->startOfDay());
     }
 
     /**
@@ -110,55 +110,46 @@ class Product extends Model
     /**
      * Get the status label.
      */
-    public function getStatusLabelAttribute(): string
-    {
-        return match ($this->status) {
-            'active' => 'Available',
-            'sold' => 'Sold Out',
-            default => ucfirst($this->status),
-        };
-    }
-
-    /**
-     * Get photos attribute with full URLs
-     */
     public function getPhotosAttribute($value)
     {
         if (is_null($value)) {
             return [];
         }
-        
+
         // If it's already an array, use it directly
         $photos = is_array($value) ? $value : json_decode($value, true);
-        
+
         if (!is_array($photos) || empty($photos)) {
             return [];
         }
-        
+
+        // Get the app URL
+        $appUrl = config('app.url');
+
         // Convert storage paths to full URLs
-        return array_map(function ($photo) {
+        return array_map(function ($photo) use ($appUrl) {
             // If it's already a full URL, return as is
             if (filter_var($photo, FILTER_VALIDATE_URL)) {
                 return $photo;
             }
-            
+
             // If it starts with /storage/, convert to full URL
             if (str_starts_with($photo, '/storage/')) {
-                return asset($photo);
+                return $appUrl . $photo;
             }
-            
-            // If it starts with storage/ (without slash), add slash
+
+            // If it starts with storage/ (without slash), add slash and app URL
             if (str_starts_with($photo, 'storage/')) {
-                return asset('/' . $photo);
+                return $appUrl . '/' . $photo;
             }
-            
+
             // If it's a relative path, add storage prefix
             if (!str_starts_with($photo, '/')) {
-                return asset('/storage/' . $photo);
+                return $appUrl . '/storage/' . $photo;
             }
-            
+
             // Default: use asset helper
-            return asset($photo);
+            return $appUrl . $photo;
         }, $photos);
     }
 
