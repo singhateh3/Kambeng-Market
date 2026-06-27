@@ -34,7 +34,6 @@ COPY composer.json composer.lock ./
 
 # ----------------------------
 # Install dependencies
-# MEMORY_LIMIT=-1 prevents OOM kills during install
 # ----------------------------
 RUN COMPOSER_MEMORY_LIMIT=-1 composer install \
     --no-dev \
@@ -50,9 +49,14 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer install \
 COPY . .
 
 # ----------------------------
-# Generate optimized autoloader now that all files exist
+# Generate optimized autoloader
+# --classmap-authoritative avoids booting Laravel during dump
 # ----------------------------
-RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize --no-dev
+RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload \
+    --optimize \
+    --classmap-authoritative \
+    --no-dev \
+    --ignore-platform-reqs
 
 # ----------------------------
 # Permissions
@@ -60,8 +64,6 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize --no-dev
 RUN mkdir -p storage bootstrap/cache && \
     chown -R www-data:www-data storage bootstrap/cache && \
     chmod -R 775 storage bootstrap/cache
-
-# ... rest of your nginx config and CMD unchanged
 
 # ----------------------------
 # NGINX CONFIG
