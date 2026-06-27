@@ -12,11 +12,19 @@ use App\Models\Product;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Cloudinary\Cloudinary;
 
 class ProductController extends Controller
 {
+    protected Cloudinary $cloudinary;
+
+    public function __construct()
+    {
+        $this->cloudinary = new Cloudinary(env('CLOUDINARY_URL'));
+    }
+
     /**
-     * Upload photos from the request and return stored paths/URLs.
+     * Upload photos to Cloudinary and return secure URLs.
      */
     private function uploadPhotos(Request $request): array
     {
@@ -25,22 +33,22 @@ class ProductController extends Controller
         if ($request->hasFile('photos')) {
             foreach ($request->file('photos') as $file) {
                 if ($file && $file->isValid()) {
-                    // Store the file
-                    $path = $file->store('products', 'public');
-                    // Store without leading slash - let the resource add it
-                    $photos[] = 'storage/' . $path;
+                    $result = $this->cloudinary->uploadApi()->upload(
+                        $file->getRealPath(),
+                        ['folder' => 'products']
+                    );
+                    $photos[] = $result['secure_url'];
                 }
             }
         }
 
-        // Log what was stored
-        \Log::info('Photos uploaded:', $photos);
+        \Log::info('Photos uploaded to Cloudinary:', $photos);
 
         return $photos;
     }
 
     /**
-     * Delete photos given an array of URLs or paths.
+     * Delete photos from Cloudinary given an array of URLs.
      */
     private function deletePhotos($photos): void
     {
@@ -48,10 +56,13 @@ class ProductController extends Controller
             return;
         }
 
-        foreach ($photos as $photo) {
-            // If it's a full URL, convert to storage path
-            $path = preg_replace('#^' . preg_quote(Storage::url(''), '#') . '#', '', $photo);
-            Storage::disk('public')->delete($path);
+        foreach ($photos as $url) {
+            // Extract public_id from Cloudinary URL
+            // URL format: https://res.cloudinary.com/{cloud}/image/upload/v123/{folder}/{filename}
+            preg_match('/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i', $url, $matches);
+            if (!empty($matches[1])) {
+                $this->cloudinary->uploadApi()->destroy($matches[1]);
+            }
         }
     }
 
@@ -66,11 +77,9 @@ class ProductController extends Controller
             ->withCount('orders')
             ->active()
             ->when($request->category, function ($query, $category) {
-                // Support filtering by single category or array of categories
                 if (is_array($category)) {
                     return $query->whereIn('category', $category);
                 }
-
                 return $query->where('category', '=', $category);
             })
             ->when($request->region, function ($query, $region) {
@@ -85,7 +94,6 @@ class ProductController extends Controller
                 });
             });
 
-        // Sorting
         $sortBy = $request->sort_by ?? 'created_at';
         $sortOrder = $request->sort_order ?? 'desc';
         $query->orderBy($sortBy, $sortOrder);
@@ -103,7 +111,6 @@ class ProductController extends Controller
     {
         $validated = $request->validated();
 
-        // Handle photo uploads
         $photoUrls = $this->uploadPhotos($request);
 
         $product = Product::create([
@@ -162,7 +169,6 @@ class ProductController extends Controller
      */
     public function destroy(Product $product): JsonResponse
     {
-        // Delete associated photos from storage
         if ($product->photos) {
             $this->deletePhotos($product->photos);
         }
