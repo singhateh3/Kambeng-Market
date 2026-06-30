@@ -82,10 +82,10 @@ RUN composer dump-autoload \
 # ----------------------------
 # Optimize Laravel
 # ----------------------------
-RUN php artisan config:cache && \
-    php artisan route:cache && \
-    php artisan view:cache && \
-    php artisan event:cache
+# RUN php artisan config:cache && \
+#     php artisan route:cache && \
+#     php artisan view:cache && \
+#     php artisan event:cache
 
 # ----------------------------
 # Permissions
@@ -214,4 +214,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Start: migrate then boot with Supervisor
 # Images are served from Cloudinary, no storage:link needed
 # ----------------------------
-CMD ["sh", "-c", "php artisan migrate --force && php artisan package:discover --ansi || true && supervisord -c /etc/supervisor/conf.d/supervisord.conf"]
+CMD ["sh", "-c", "php artisan config:cache && php artisan route:cache && php artisan view:cache && php artisan event:cache && php artisan migrate --force && php artisan package:discover --ansi || true && supervisord -c /etc/supervisor/conf.d/supervisord.conf"]
