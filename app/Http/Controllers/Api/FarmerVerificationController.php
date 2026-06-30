@@ -19,7 +19,7 @@ class FarmerVerificationController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             if (!$user->isFarmer()) {
                 return response()->json([
                     'success' => false,
@@ -50,15 +50,30 @@ class FarmerVerificationController extends Controller
             // Send notification to all admins
             try {
                 $notificationService = app(NotificationService::class);
-                
+
                 // Get all admin users
                 $admins = User::where('role', 'admin')->get();
-                
+
                 foreach ($admins as $admin) {
-                    $notificationService->farmerVerificationRequest($user, $admin);
+                    $notificationService->send(
+                        $admin,
+                        'farmer_verification_request',
+                        'New Farmer Verification Request! 👨‍🌾',
+                        "{$user->name} has requested to become a verified farmer. Please review their application.",
+                        [
+                            'farmer_id' => $user->id,
+                            'farmer_name' => $user->name,
+                            'farmer_email' => $user->email,
+                        ],
+                        '👨‍🌾',
+                        '/admin/farmers/verification'
+                    );
                 }
+
+                Log::info('Verification notification sent to admins for farmer: ' . $user->id);
             } catch (\Exception $e) {
-                \Log::error('Error sending verification notification to admins: ' . $e->getMessage());
+                Log::error('Error sending verification notification to admins: ' . $e->getMessage());
+                // Don't fail the request if notification fails
             }
 
             return response()->json([
@@ -70,7 +85,7 @@ class FarmerVerificationController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            \Log::error('Error requesting verification: ' . $e->getMessage());
+            Log::error('Error requesting verification: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error requesting verification: ' . $e->getMessage(),
@@ -85,7 +100,7 @@ class FarmerVerificationController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [

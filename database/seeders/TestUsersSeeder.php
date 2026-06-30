@@ -16,8 +16,10 @@ class TestUsersSeeder extends Seeder
      */
     public function run(): void
     {
-        // 1. Admin User
-        $this->createAdmin();
+        // 1. Admin User (skip if already created)
+        if (!User::where('email', 'admin@kambeng.com')->exists()) {
+            $this->createAdmin();
+        }
 
         // 2. Test Farmer (Approved)
         $this->createTestFarmer();
@@ -158,8 +160,6 @@ class TestUsersSeeder extends Seeder
                 'farm_location' => 'Serekunda, West Coast Region',
                 'bio' => 'This farm was rejected.',
                 'id_verified' => false,
-                'rejection_reason' => 'Incomplete documentation provided.',
-                'rejected_at' => now(),
             ]
         );
 

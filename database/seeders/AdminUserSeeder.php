@@ -7,7 +7,6 @@ namespace Database\Seeders;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\User;
-use App\Models\FarmerProfile;
 use Illuminate\Support\Facades\Hash;
 
 class AdminUserSeeder extends Seeder
@@ -19,7 +18,7 @@ class AdminUserSeeder extends Seeder
     {
         // Check if admin already exists
         $existingAdmin = User::where('email', 'admin@kambeng.com')->first();
-        
+
         if ($existingAdmin) {
             $this->command->info('⚠️ Admin user already exists!');
             $this->command->info('📧 Email: admin@kambeng.com');

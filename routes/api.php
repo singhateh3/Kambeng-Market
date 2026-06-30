@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\FarmerVerificationController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PublicController;
+use App\Http\Controllers\Api\ProfileController;
+
 
 
 
@@ -63,6 +65,12 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         Route::patch('/{user}/toggle-status', [AdminUserController::class, 'toggleStatus']);
         Route::delete('/{user}', [AdminUserController::class, 'destroy']);
     });
+
+    // Profile routes
+    Route::get('/user', [ProfileController::class, 'show']);
+    Route::post('/user/profile', [ProfileController::class, 'update']);
+    Route::put('/user/profile', [ProfileController::class, 'update']);
+
 
     // Farmer Verification Routes
     Route::prefix('farmers')->group(function () {
@@ -146,13 +154,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/review', [OrderController::class, 'review']);
     });
 
-    // Notification routes
+    // Notification routes - updated to match frontend
     Route::prefix('notifications')->group(function () {
         Route::get('/', [NotificationController::class, 'index']);
         Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
-        Route::post('/mark-all-read', [NotificationController::class, 'markAllAsRead']);
-        Route::delete('/delete-read', [NotificationController::class, 'deleteRead']);
-        Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);
+        Route::put('/{notification}/read', [NotificationController::class, 'markAsRead']);      // Changed from POST to PUT
+        Route::put('/read-all', [NotificationController::class, 'markAllAsRead']);              // Changed from POST to PUT
+        Route::delete('/read', [NotificationController::class, 'deleteRead']);                  // Changed from /delete-read to /read
         Route::delete('/{notification}', [NotificationController::class, 'destroy']);
     });
 });

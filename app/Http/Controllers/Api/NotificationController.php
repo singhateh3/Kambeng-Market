@@ -22,18 +22,27 @@ class NotificationController extends Controller
 
             // Filter by read status
             if ($request->has('is_read')) {
-                if ($request->is_read === 'true') {
+                if ($request->is_read === 'true' || $request->is_read === '1') {
                     $query->where('is_read', true);
-                } elseif ($request->is_read === 'false') {
+                } elseif ($request->is_read === 'false' || $request->is_read === '0') {
                     $query->where('is_read', false);
                 }
             }
 
-            $notifications = $query->paginate($request->per_page ?? 20);
+            $perPage = $request->input('per_page', 20);
+            $notifications = $query->paginate($perPage);
+
+            // Format the response to match frontend expectations
+            $formattedNotifications = $notifications->items();
+
+            // Add time_ago to each notification
+            foreach ($formattedNotifications as $notification) {
+                $notification->time_ago = $notification->created_at->diffForHumans();
+            }
 
             return response()->json([
                 'success' => true,
-                'data' => $notifications->items(),
+                'data' => $formattedNotifications,
                 'meta' => [
                     'current_page' => $notifications->currentPage(),
                     'last_page' => $notifications->lastPage(),
@@ -49,6 +58,7 @@ class NotificationController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error fetching notifications',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -79,6 +89,7 @@ class NotificationController extends Controller
 
     /**
      * Mark a notification as read
+     * Route: PUT /api/notifications/{notification}/read
      */
     public function markAsRead(Request $request, Notification $notification): JsonResponse
     {
@@ -91,7 +102,10 @@ class NotificationController extends Controller
                 ], 403);
             }
 
-            $notification->markAsRead();
+            $notification->update([
+                'is_read' => true,
+                'read_at' => now(),
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -99,20 +113,23 @@ class NotificationController extends Controller
                 'data' => $notification,
             ]);
         } catch (\Exception $e) {
+            \Log::error('Error marking notification as read: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error marking notification as read',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
      * Mark all notifications as read
+     * Route: PUT /api/notifications/read-all
      */
     public function markAllAsRead(Request $request): JsonResponse
     {
         try {
-            Notification::where('user_id', $request->user()->id)
+            $updated = Notification::where('user_id', $request->user()->id)
                 ->where('is_read', false)
                 ->update([
                     'is_read' => true,
@@ -121,18 +138,24 @@ class NotificationController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'All notifications marked as read',
+                'message' => "{$updated} notifications marked as read",
+                'data' => [
+                    'updated_count' => $updated,
+                ],
             ]);
         } catch (\Exception $e) {
+            \Log::error('Error marking all notifications as read: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error marking notifications as read',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
      * Delete a notification
+     * Route: DELETE /api/notifications/{notification}
      */
     public function destroy(Request $request, Notification $notification): JsonResponse
     {
@@ -152,31 +175,39 @@ class NotificationController extends Controller
                 'message' => 'Notification deleted successfully',
             ]);
         } catch (\Exception $e) {
+            \Log::error('Error deleting notification: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error deleting notification',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
      * Delete all read notifications
+     * Route: DELETE /api/notifications/read
      */
     public function deleteRead(Request $request): JsonResponse
     {
         try {
-            Notification::where('user_id', $request->user()->id)
+            $deleted = Notification::where('user_id', $request->user()->id)
                 ->where('is_read', true)
                 ->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Read notifications deleted successfully',
+                'message' => "{$deleted} read notifications deleted successfully",
+                'data' => [
+                    'deleted_count' => $deleted,
+                ],
             ]);
         } catch (\Exception $e) {
+            \Log::error('Error deleting read notifications: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error deleting read notifications',
+                'error' => $e->getMessage()
             ], 500);
         }
     }

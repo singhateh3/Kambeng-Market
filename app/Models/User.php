@@ -1,7 +1,5 @@
 <?php
 
-// app/Models/User.php
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -49,6 +47,11 @@ class User extends Authenticatable
         return $this->hasMany(Product::class, 'farmer_id');
     }
 
+    public function orders()
+    {
+        return $this->hasMany(Order::class, 'buyer_id');
+    }
+
     // Role checks
     public function isFarmer(): bool
     {
@@ -63,6 +66,11 @@ class User extends Authenticatable
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    public function hasRole(string $role): bool
+    {
+        return $this->role === $role;
     }
 
     // Verification methods
@@ -118,7 +126,41 @@ class User extends Authenticatable
         }
     }
 
+    // Helper method to update profile
+    public function updateProfile(array $data): void
+    {
+        $userData = [];
+        $farmerData = [];
+
+        // Separate user and farmer data
+        foreach ($data as $key => $value) {
+            if (in_array($key, ['name', 'phone', 'location', 'avatar'])) {
+                $userData[$key] = $value;
+            } elseif (in_array($key, ['bio', 'farm_name', 'farm_location'])) {
+                $farmerData[$key] = $value;
+            }
+        }
+
+        // Update user
+        if (!empty($userData)) {
+            $this->update($userData);
+        }
+
+        // Update farmer profile if user is a farmer and has farmer profile
+        if (!empty($farmerData) && $this->isFarmer() && $this->farmerProfile) {
+            $this->farmerProfile->update($farmerData);
+        }
+    }
+
     // Accessors
+    public function getAvatarUrlAttribute(): ?string
+    {
+        if ($this->avatar) {
+            return asset('storage/' . $this->avatar);
+        }
+        return null;
+    }
+
     public function getVerificationStatusLabelAttribute(): string
     {
         return match ($this->verification_status) {

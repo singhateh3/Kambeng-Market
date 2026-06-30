@@ -19,22 +19,30 @@ class AdminFarmerVerificationController extends Controller
      */
     public function pending(): JsonResponse
     {
-        $farmers = User::where('role', 'farmer')
-            ->where('verification_status', 'pending')
-            ->with('farmerProfile')
-            ->latest('verification_requested_at')
-            ->paginate(20);
+        try {
+            $farmers = User::where('role', 'farmer')
+                ->where('verification_status', 'pending')
+                ->with('farmerProfile')
+                ->latest('verification_requested_at')
+                ->paginate(20);
 
-        return response()->json([
-            'success' => true,
-            'data' => UserResource::collection($farmers),
-            'meta' => [
-                'current_page' => $farmers->currentPage(),
-                'last_page' => $farmers->lastPage(),
-                'per_page' => $farmers->perPage(),
-                'total' => $farmers->total(),
-            ],
-        ]);
+            return response()->json([
+                'success' => true,
+                'data' => UserResource::collection($farmers),
+                'meta' => [
+                    'current_page' => $farmers->currentPage(),
+                    'last_page' => $farmers->lastPage(),
+                    'per_page' => $farmers->perPage(),
+                    'total' => $farmers->total(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching pending farmers: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching pending farmers: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -42,38 +50,69 @@ class AdminFarmerVerificationController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = User::where('role', 'farmer')
-            ->with('farmerProfile')
-            ->when($request->status, function ($query, $status) {
-                if ($status === '') {
-                    return $query;
-                }
-                return $query->where('verification_status', $status);
-            })
-            ->when($request->search, function ($query, $search) {
-                return $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('phone', 'like', "%{$search}%")
-                      ->orWhereHas('farmerProfile', function ($q) use ($search) {
-                          $q->where('farm_name', 'like', "%{$search}%")
-                            ->orWhere('farm_location', 'like', "%{$search}%");
-                      });
+        try {
+            $query = User::where('role', 'farmer')
+                ->with('farmerProfile')
+                ->when($request->status, function ($query, $status) {
+                    if ($status === '') {
+                        return $query;
+                    }
+                    return $query->where('verification_status', $status);
+                })
+                ->when($request->search, function ($query, $search) {
+                    return $query->where(function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%")
+                            ->orWhereHas('farmerProfile', function ($q) use ($search) {
+                                $q->where('farm_name', 'like', "%{$search}%")
+                                    ->orWhere('farm_location', 'like', "%{$search}%");
+                            });
+                    });
                 });
-            });
 
-        $farmers = $query->latest()->paginate($request->per_page ?? 20);
+            $farmers = $query->latest()->paginate($request->per_page ?? 20);
 
-        return response()->json([
-            'success' => true,
-            'data' => UserResource::collection($farmers),
-            'meta' => [
-                'current_page' => $farmers->currentPage(),
-                'last_page' => $farmers->lastPage(),
-                'per_page' => $farmers->perPage(),
-                'total' => $farmers->total(),
-            ],
-        ]);
+            return response()->json([
+                'success' => true,
+                'data' => UserResource::collection($farmers),
+                'meta' => [
+                    'current_page' => $farmers->currentPage(),
+                    'last_page' => $farmers->lastPage(),
+                    'per_page' => $farmers->perPage(),
+                    'total' => $farmers->total(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching farmers: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching farmers: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get count of pending farmer verifications
+     */
+    public function pendingVerificationsCount(): JsonResponse
+    {
+        try {
+            $count = User::where('role', 'farmer')
+                ->where('verification_status', 'pending')
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'count' => $count,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching pending verifications count: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching pending verifications count',
+            ], 500);
+        }
     }
 
     /**
@@ -81,19 +120,27 @@ class AdminFarmerVerificationController extends Controller
      */
     public function show(User $farmer): JsonResponse
     {
-        if (!$farmer->isFarmer()) {
+        try {
+            if (!$farmer->isFarmer()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a farmer',
+                ], 422);
+            }
+
+            $farmer->load('farmerProfile');
+
+            return response()->json([
+                'success' => true,
+                'data' => new UserResource($farmer),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching farmer: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'User is not a farmer',
-            ], 422);
+                'message' => 'Error fetching farmer: ' . $e->getMessage(),
+            ], 500);
         }
-
-        $farmer->load('farmerProfile');
-
-        return response()->json([
-            'success' => true,
-            'data' => new UserResource($farmer),
-        ]);
     }
 
     /**
@@ -127,7 +174,7 @@ class AdminFarmerVerificationController extends Controller
                 ]);
             }
 
-            // Send notification to the farmer
+            // Send notification to the farmer AND admins
             try {
                 $notificationService = app(NotificationService::class);
                 $notificationService->farmerVerified($farmer);
@@ -179,7 +226,7 @@ class AdminFarmerVerificationController extends Controller
                 ]);
             }
 
-            // Send notification to the farmer with rejection reason
+            // Send notification to the farmer with rejection reason AND admins
             try {
                 $notificationService = app(NotificationService::class);
                 $notificationService->farmerRejected($farmer, $request->reason);
@@ -229,7 +276,7 @@ class AdminFarmerVerificationController extends Controller
                     ]);
                 }
 
-                // Send notification to each farmer
+                // Send notification to each farmer AND admins
                 try {
                     $notificationService = app(NotificationService::class);
                     $notificationService->farmerVerified($farmer);

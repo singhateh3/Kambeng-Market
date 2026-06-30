@@ -34,6 +34,10 @@ class OrderController extends Controller
             else if ($user->isBuyer()) {
                 $query->where('buyer_id', $user->id);
             }
+            // If user is admin, show all orders
+            else if ($user->isAdmin()) {
+                // Admin sees all orders - no filter needed
+            }
 
             // Filter by status if provided
             if ($request->status) {
@@ -121,7 +125,7 @@ class OrderController extends Controller
             // Load relationships for response
             $order->load(['buyer', 'product', 'product.farmer']);
 
-            // Send notification to farmer
+            // Send notification to farmer AND admins
             try {
                 $notificationService = app(NotificationService::class);
                 $notificationService->orderPlaced($order->product->farmer, $order);
@@ -159,7 +163,7 @@ class OrderController extends Controller
             // Check if user is authorized to view this order
             $user = auth()->user();
 
-            // Allow if user is the buyer, or the farmer who owns the product
+            // Allow if user is the buyer, or the farmer who owns the product, or admin
             $isBuyer = $user->id === $order->buyer_id;
             $isFarmer = $user->isFarmer() && $order->product->farmer_id === $user->id;
 
@@ -239,16 +243,19 @@ class OrderController extends Controller
 
                 switch ($newStatus) {
                     case 'confirmed':
+                        // Notify buyer and admins
                         $notificationService->orderConfirmed($order->buyer, $order);
                         break;
                     case 'shipped':
+                        // Notify buyer and admins
                         $notificationService->orderShipped($order->buyer, $order);
                         break;
                     case 'delivered':
+                        // Notify buyer and admins
                         $notificationService->orderDelivered($order->buyer, $order);
                         break;
                     case 'cancelled':
-                        // Notify both buyer and farmer
+                        // Notify both buyer and farmer, and admins
                         $notificationService->orderCancelled($order->buyer, $order, 'buyer');
                         $notificationService->orderCancelled($order->product->farmer, $order, 'farmer');
                         break;
@@ -376,6 +383,14 @@ class OrderController extends Controller
                 'rating' => $request->rating,
                 'comment' => $request->comment,
             ]);
+
+            // Send review notification to farmer and admins
+            try {
+                $notificationService = app(NotificationService::class);
+                $notificationService->newReview($order->product->farmer, $order, $review);
+            } catch (\Exception $e) {
+                \Log::error('Error sending review notification: ' . $e->getMessage());
+            }
 
             return response()->json([
                 'success' => true,
