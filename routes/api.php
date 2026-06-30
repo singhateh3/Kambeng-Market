@@ -44,6 +44,11 @@ Route::get('/products/categories', [ProductController::class, 'categories']);
 Route::get('/products/featured', [ProductController::class, 'featured']);
 Route::get('/products/{product}', [ProductController::class, 'show']);
 
+// Create a simple keep-alive route
+Route::get('/keep-alive', function () {
+    return response()->json(['status' => 'alive', 'timestamp' => now()]);
+});
+
 // Public farmer profile routes
 Route::get('/farmers/{userId}/profile', [FarmerProfileController::class, 'publicShow']);
 

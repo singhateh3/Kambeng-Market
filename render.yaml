@@ -1,60 +1,39 @@
 # render.yaml
-
 services:
   - type: web
     name: kambeng-market-api
-    runtime: php
-    plan: free
-    buildCommand: |
-      composer install --no-dev --optimize-autoloader
-      php artisan config:cache
-      php artisan route:cache
-      php artisan view:cache
-      php artisan migrate --force
-    startCommand: php artisan serve --host=0.0.0.0 --port=10000
+    runtime: image
+    image:
+      url: your-docker-image-url
+    plan: starter
     envVars:
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
         value: false
       - key: APP_KEY
-        generateValue: true
-      - key: APP_URL
-        value: https://kambeng-market-api.onrender.com
-      - key: FRONTEND_URL
-        value: https://kambeng-market-frontend.onrender.com
+        value: base64:KnCT2lhY404CpLVtApvRuV6ImM9ImA41rxZjeRDxwEI=
       - key: DB_CONNECTION
-        value: mysql
+        value: pgsql
       - key: DB_HOST
-        fromDatabase:
-          name: kambeng-db
-          property: host
+        value: dpg-d8v2obcm0tmc738r7tqg-a.oregon-postgres.render.com
       - key: DB_PORT
-        fromDatabase:
-          name: kambeng-db
-          property: port
+        value: 5432
       - key: DB_DATABASE
-        fromDatabase:
-          name: kambeng-db
-          property: database
+        value: kambeng_user_3ghn
       - key: DB_USERNAME
-        fromDatabase:
-          name: kambeng-db
-          property: user
+        value: kambeng_user_3ghn_user
       - key: DB_PASSWORD
-        fromDatabase:
-          name: kambeng-db
-          property: password
-      - key: SESSION_DRIVER
-        value: database
+        value: WVoILpdRaZPlbvYjwvaUS4g08wjV2BMT
+      - key: DB_SSLMODE
+        value: require
+      - key: CLOUDINARY_URL
+        value: cloudinary://677657944542481:qdBwwhj_P9VrVCKDylSkQu_zMQU@dypckwt3d
+      - key: FRONTEND_URL
+        value: https://kambeng-market-frontend.vercel.app
       - key: CACHE_STORE
+        value: database
+      - key: SESSION_DRIVER
         value: database
       - key: QUEUE_CONNECTION
         value: database
-
-  - type: web
-    name: kambeng-db
-    runtime: mysql
-    plan: free
-    databaseName: kambeng_market
-    user: kambeng_user
