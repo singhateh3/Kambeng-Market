@@ -97,6 +97,11 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         Route::post('/bulk-delete', [AdminProductController::class, 'bulkDelete']);
     });
 
+    // product search
+    Route::get('/products/search', [ProductController::class, 'search']);
+    Route::get('/products/autocomplete', [ProductController::class, 'autocomplete']);
+    Route::get('/products/{product}/related', [ProductController::class, 'related']);
+
     // Order Management
     Route::prefix('orders')->group(function () {
         Route::get('/', [AdminOrderController::class, 'index']);

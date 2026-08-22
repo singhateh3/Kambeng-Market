@@ -48,7 +48,6 @@ class NotificationService
 
     /**
      * Generate a notification link based on user role
-     * FIXED: Remove the 'admin' prefix from the path if it exists
      */
     private function generateLink(User $user, string $path): string
     {
@@ -65,7 +64,7 @@ class NotificationService
         // For admin users, check if the path already has 'admin' prefix
         if ($user->isAdmin() && str_starts_with($cleanPath, 'admin/')) {
             // Remove 'admin/' from the path to avoid duplication
-            $cleanPath = substr($cleanPath, 6); // Remove 'admin/'
+            $cleanPath = substr($cleanPath, 6);
         }
 
         $fullLink = "{$baseUrl}/{$cleanPath}";
@@ -143,7 +142,7 @@ class NotificationService
             "/orders/{$order->id}"
         );
 
-        // Send to all admins
+        // Send to all admins - Use regular order details page (admin has access)
         $this->sendToAdmins(
             'order_placed',
             'New Order Placed! 🛒',
@@ -157,7 +156,7 @@ class NotificationService
                 'total_price' => $order->total_price,
             ],
             '🛒',
-            "/orders/{$order->id}"
+            "/orders/{$order->id}" // Admin will see the regular order details page
         );
 
         return $farmerNotification;
@@ -183,7 +182,7 @@ class NotificationService
             "/orders/{$order->id}"
         );
 
-        // Send to all admins
+        // Send to all admins - Use regular order details page
         $this->sendToAdmins(
             'order_confirmed',
             'Order Confirmed ✅',
@@ -220,7 +219,7 @@ class NotificationService
             "/orders/{$order->id}"
         );
 
-        // Send to all admins
+        // Send to all admins - Use regular order details page
         $this->sendToAdmins(
             'order_shipped',
             'Order Shipped 🚚',
@@ -255,7 +254,7 @@ class NotificationService
             "/orders/{$order->id}"
         );
 
-        // Send to all admins
+        // Send to all admins - Use regular order details page
         $this->sendToAdmins(
             'order_delivered',
             'Order Delivered 📦',
@@ -294,7 +293,7 @@ class NotificationService
             "/orders/{$order->id}"
         );
 
-        // Send to all admins
+        // Send to all admins - Use regular order details page
         $this->sendToAdmins(
             'order_cancelled',
             'Order Cancelled ❌',
@@ -329,7 +328,7 @@ class NotificationService
                     'farmer_email' => $farmer->email,
                 ],
                 '👨‍🌾',
-                "/farmers/verification"
+                "/farmers/verification" // Will become /app/admin/farmers/verification
             );
         }
     }
@@ -350,7 +349,7 @@ class NotificationService
                 'user_role' => $newUser->role,
             ],
             '👤',
-            "/users"
+            "/users" // Will become /app/admin/users
         );
     }
 
@@ -384,7 +383,7 @@ class NotificationService
                 'farmer_name' => $product->farmer->name,
             ],
             '🌾',
-            "/products"
+            "/products" // Will become /app/admin/products
         );
     }
 
@@ -419,7 +418,7 @@ class NotificationService
                 'quantity' => $product->quantity,
             ],
             '⚠️',
-            "/products"
+            "/products" // Will become /app/admin/products
         );
 
         return $farmerNotification;
@@ -457,7 +456,7 @@ class NotificationService
                 'rating' => $review->rating,
             ],
             '⭐',
-            "/orders/{$order->id}"
+            "/orders/{$order->id}" // Will become /app/admin/orders/{id} for admin
         );
 
         return $farmerNotification;
@@ -489,7 +488,7 @@ class NotificationService
                 'farmer_name' => $farmer->name,
             ],
             '✅',
-            "/farmers/verification"
+            "/farmers/verification" // Will become /app/admin/farmers/verification
         );
 
         return $farmerNotification;
@@ -522,7 +521,7 @@ class NotificationService
                 'reason' => $reason,
             ],
             '❌',
-            "/farmers/verification"
+            "/farmers/verification" // Will become /app/admin/farmers/verification
         );
 
         return $farmerNotification;
