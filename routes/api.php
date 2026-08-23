@@ -153,6 +153,24 @@ Route::get('/create-test-user', function () {
     }
 });
 
+// seed into the database
+
+Route::get('/seed-database', function () {
+    try {
+        \Artisan::call('db:seed', ['--force' => true]);
+
+        return response()->json([
+            'success' => true,
+            'message' => '✅ Database seeded successfully!',
+            'output' => \Artisan::output()
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
+});
 // ============================================
 // ADMIN ROUTES (Authentication + Admin role required)
 // ============================================
