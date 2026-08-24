@@ -302,3 +302,26 @@ Route::get('/admin/test', function () {
         'user' => auth()->user()->only(['id', 'name', 'email', 'role'])
     ]);
 })->middleware(['auth:sanctum', 'admin']);
+
+
+Route::get('/debug-product/{id}', function ($id) {
+    $product = \App\Models\Product::with(['farmer'])->find($id);
+
+    if (!$product) {
+        return response()->json([
+            'exists' => false,
+            'message' => "Product with ID {$id} not found"
+        ], 404);
+    }
+
+    return response()->json([
+        'exists' => true,
+        'product' => $product,
+        'has_farmer' => $product->farmer ? true : false,
+        'farmer_data' => $product->farmer,
+        'status' => $product->status,
+        'quantity' => $product->quantity,
+        'is_available' => $product->status === 'active' && $product->quantity > 0,
+        'product_link' => "/app/products/{$product->id}",
+    ]);
+});
