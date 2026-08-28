@@ -463,38 +463,7 @@ class ProductController extends Controller
             // Calculate average rating
             $product->avg_rating = $product->reviews->avg('rating') ?? 0;
 
-            // Return as JSON directly instead of using ProductResource
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'category' => $product->category,
-                    'variety' => $product->variety,
-                    'quantity' => $product->quantity,
-                    'unit' => $product->unit,
-                    'price' => $product->price,
-                    'price_formatted' => $product->price_formatted ?? 'GMD ' . number_format($product->price, 2),
-                    'description' => $product->description,
-                    'photos' => $product->photos,
-                    'status' => $product->status,
-                    'harvest_date' => $product->harvest_date,
-                    'expiry_date' => $product->expiry_date,
-                    'is_available' => $product->status === 'active' && $product->quantity > 0,
-                    'average_rating' => $product->avg_rating,
-                    'orders_count' => $product->orders_count,
-                    'farmer' => $product->farmer ? [
-                        'id' => $product->farmer->id,
-                        'name' => $product->farmer->name,
-                        'email' => $product->farmer->email,
-                        'phone' => $product->farmer->phone,
-                        'location' => $product->farmer->location,
-                        'avatar' => $product->farmer->avatar,
-                    ] : null,
-                    'created_at' => $product->created_at,
-                    'updated_at' => $product->updated_at,
-                ]
-            ]);
+            return new ProductResource($product);
         } catch (\Exception $e) {
             Log::error('Error fetching product: ' . $e->getMessage());
             return response()->json([
@@ -503,6 +472,7 @@ class ProductController extends Controller
             ], 404);
         }
     }
+
     /**
      * Update product status (active/sold)
      */
