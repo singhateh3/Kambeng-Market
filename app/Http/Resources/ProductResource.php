@@ -23,6 +23,7 @@ class ProductResource extends JsonResource
             'harvest_date_display' => $this->harvest_date?->format('M d, Y'),
             'expiry_date' => $this->expiry_date?->toISOString(),
             'expiry_date_display' => $this->expiry_date?->format('M d, Y'),
+            'description' => $this->description,
             'photos' => $this->getPhotoUrls(),
             'status' => $this->status,
             'status_label' => $this->getStatusLabel(),
@@ -32,7 +33,10 @@ class ProductResource extends JsonResource
                 return new UserResource($this->farmer);
             }),
             'orders_count' => $this->whenCounted('orders'),
-            'average_rating' => $this->when(isset($this->average_rating), $this->average_rating),
+            // Controller sets $product->avg_rating (see ProductController::show());
+            // this used to check a different property name (average_rating) and
+            // so never actually appeared in the response.
+            'avg_rating' => $this->when(isset($this->avg_rating), fn () => (float) $this->avg_rating),
         ];
     }
 

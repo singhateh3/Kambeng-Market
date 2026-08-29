@@ -23,6 +23,7 @@ class StoreProductRequest extends FormRequest
             'price' => 'required|numeric|min:0.01',
             'harvest_date' => 'required|date|before_or_equal:today',
             'expiry_date' => 'required|date|after:harvest_date',
+            'description' => 'nullable|string|max:1000',
             'photos' => 'nullable|array|max:5',
             'photos.*' => 'image|max:5120', // 5MB max
         ];

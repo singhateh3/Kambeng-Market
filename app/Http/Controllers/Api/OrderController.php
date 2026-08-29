@@ -77,6 +77,7 @@ class OrderController extends Controller
                 'delivery_method' => 'required|in:pickup,farmer_delivery',
                 'delivery_deadline' => 'nullable|date|after:today',
                 'pickup_date' => 'nullable|date|after_or_equal:today',
+                'delivery_address' => 'required_if:delivery_method,farmer_delivery|nullable|string|max:500',
                 'special_instructions' => 'nullable|string|max:500',
             ]);
 
@@ -111,13 +112,15 @@ class OrderController extends Controller
                 'order_date' => now(),
             ];
 
-            // Set the appropriate date based on delivery method
+            // Set the appropriate date (and address) based on delivery method
             if ($request->delivery_method === 'pickup') {
                 $orderData['pickup_date'] = $request->pickup_date;
                 $orderData['delivery_deadline'] = null;
+                $orderData['delivery_address'] = null;
             } else {
                 $orderData['delivery_deadline'] = $request->delivery_deadline;
                 $orderData['pickup_date'] = null;
+                $orderData['delivery_address'] = $request->delivery_address;
             }
 
             $order = Order::create($orderData);

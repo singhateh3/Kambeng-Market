@@ -24,6 +24,7 @@ class OrderResource extends JsonResource
             'delivery_deadline_display' => $this->delivery_deadline?->format('M d, Y'),
             'pickup_date' => $this->pickup_date?->toISOString(),
             'pickup_date_display' => $this->pickup_date?->format('M d, Y'),
+            'delivery_address' => $this->delivery_address,
             'order_date' => $this->order_date?->toISOString(),
             'order_date_display' => $this->order_date?->format('M d, Y H:i'),
             'created_at' => $this->created_at?->toISOString(),
