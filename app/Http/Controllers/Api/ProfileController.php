@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -10,6 +11,16 @@ use Illuminate\Support\Facades\Validator;
 
 class ProfileController extends Controller
 {
+    /**
+     * Get the authenticated admin's profile
+     */
+    public function show(Request $request): UserResource
+    {
+        return new UserResource(
+            $request->user()->load('farmerProfile')
+        );
+    }
+
     /**
      * Get user profile
      */

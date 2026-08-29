@@ -20,6 +20,7 @@ class Order extends Model
         'delivery_method',
         'delivery_deadline',
         'pickup_date',
+        'delivery_address',
         'order_date',
     ];
 

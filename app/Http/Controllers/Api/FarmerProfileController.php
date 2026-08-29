@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\FarmerProfile\UpdateFarmerProfileRequest;
 use App\Http\Resources\FarmerProfileResource;
+use App\Http\Resources\UserResource;
 use App\Models\FarmerProfile;
 use App\Models\Order;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class FarmerProfileController extends Controller
 {
@@ -50,6 +52,41 @@ class FarmerProfileController extends Controller
             'message' => 'Profile updated successfully',
             'data' => new FarmerProfileResource($profile->load('user')),
         ]);
+    }
+
+    /**
+     * Upload/replace the authenticated user's avatar.
+     */
+    public function uploadAvatar(Request $request): JsonResponse
+    {
+        $request->validate([
+            'avatar' => 'required|image|mimes:jpeg,png,gif,webp|max:5120',
+        ]);
+
+        $user = $request->user();
+
+        if ($user->avatar) {
+            Storage::disk('public')->delete($user->avatar);
+        }
+
+        $path = $request->file('avatar')->store('avatars', 'public');
+        $user->update(['avatar' => $path]);
+
+        return response()->json([
+            'message' => 'Avatar updated successfully',
+            'data' => new UserResource($user->fresh()),
+        ]);
+    }
+
+    /**
+     * Submit a farmer verification request.
+     *
+     * Delegates to FarmerVerificationController::requestVerification() so the
+     * verification workflow has a single implementation.
+     */
+    public function submitVerification(Request $request, FarmerVerificationController $farmerVerificationController): JsonResponse
+    {
+        return $farmerVerificationController->requestVerification($request);
     }
 
     /**

@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Product\ListProductsRequest;
 use App\Http\Requests\Product\StoreProductRequest;
+use App\Http\Requests\Product\UpdateProductRequest;
 use App\Http\Requests\Product\UpdateProductStatusRequest;
 use App\Http\Resources\ProductCollection;
 use App\Http\Resources\ProductResource;
@@ -405,6 +406,7 @@ class ProductController extends Controller
                 'price' => $validated['price'],
                 'harvest_date' => $validated['harvest_date'],
                 'expiry_date' => $validated['expiry_date'],
+                'description' => $validated['description'] ?? null,
                 'photos' => $photoUrls,
                 'status' => 'active',
             ]);
@@ -456,12 +458,20 @@ class ProductController extends Controller
                     $query->latest()->limit(5);
                 },
                 'reviews' => function ($query) {
-                    $query->with('user')->latest()->limit(10);
+                    // Qualify the column: reviews is loaded via a hasManyThrough
+                    // join against orders, and both tables have a created_at
+                    // column, which is ambiguous to the eager-load-with-limit
+                    // subquery unless explicitly qualified.
+                    $query->with('user')->latest('reviews.created_at')->limit(10);
                 },
             ]);
 
+            // Use loadCount() rather than pulling every order row just to
+            // count them — orders_count is what ProductResource actually reads.
+            $product->loadCount('orders');
+
             // Calculate average rating
-            $product->avg_rating = $product->reviews->avg('rating') ?? 0;
+            $product->avg_rating = round($product->reviews->avg('rating') ?? 0, 1);
 
             return new ProductResource($product);
         } catch (\Exception $e) {
@@ -470,6 +480,46 @@ class ProductController extends Controller
                 'success' => false,
                 'message' => 'Product not found',
             ], 404);
+        }
+    }
+
+    /**
+     * Update the specified product
+     */
+    public function update(UpdateProductRequest $request, Product $product): JsonResponse
+    {
+        try {
+            $validated = $request->validated();
+
+            $product->update(collect($validated)->except(['photos', 'remove_photos'])->toArray());
+
+            // Process photo removals before additions
+            if (!empty($validated['remove_photos'])) {
+                $this->deletePhotos($validated['remove_photos']);
+
+                $remainingPhotos = array_values(array_diff($product->photos ?? [], $validated['remove_photos']));
+                $product->update(['photos' => $remainingPhotos]);
+            }
+
+            if ($request->hasFile('photos')) {
+                $newPhotos = $this->uploadPhotos($request);
+                $product->update([
+                    'photos' => array_merge($product->photos ?? [], $newPhotos),
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Product updated successfully',
+                'data' => new ProductResource($product->fresh()->load('farmer')),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating product: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating product',
+                'error' => $e->getMessage(),
+            ], 500);
         }
     }
 

@@ -113,18 +113,21 @@ class AdminDashboardController extends Controller
         ->orderBy('date')
         ->get();
 
-        // Get monthly revenue
-        $monthlyRevenue = Order::select(
-            DB::raw('MONTH(created_at) as month'),
-            DB::raw('YEAR(created_at) as year'),
-            DB::raw('sum(total_price) as revenue')
-        )
-        ->where('status', 'delivered')
-        ->where('created_at', '>=', now()->subMonths(6))
-        ->groupBy('year', 'month')
-        ->orderBy('year')
-        ->orderBy('month')
-        ->get();
+        // Get monthly revenue (grouped in PHP for portability across MySQL/PostgreSQL/SQLite)
+        $monthlyRevenue = Order::where('status', 'delivered')
+            ->where('created_at', '>=', now()->subMonths(6))
+            ->get(['created_at', 'total_price'])
+            ->groupBy(fn ($order) => $order->created_at->format('Y-m'))
+            ->map(function ($orders, $yearMonth) {
+                $date = \Illuminate\Support\Carbon::createFromFormat('Y-m', $yearMonth);
+                return [
+                    'month' => $date->month,
+                    'year' => $date->year,
+                    'revenue' => (float) $orders->sum('total_price'),
+                ];
+            })
+            ->sortBy(fn ($row) => sprintf('%04d-%02d', $row['year'], $row['month']))
+            ->values();
 
         // User growth over time
         $userGrowth = User::select(
