@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Product\ListProductsRequest;
 use App\Http\Requests\Product\StoreProductRequest;
+use App\Http\Requests\Product\UpdateProductRequest;
 use App\Http\Requests\Product\UpdateProductStatusRequest;
 use App\Http\Resources\ProductCollection;
 use App\Http\Resources\ProductResource;
@@ -470,6 +471,46 @@ class ProductController extends Controller
                 'success' => false,
                 'message' => 'Product not found',
             ], 404);
+        }
+    }
+
+    /**
+     * Update the specified product
+     */
+    public function update(UpdateProductRequest $request, Product $product): JsonResponse
+    {
+        try {
+            $validated = $request->validated();
+
+            $product->update(collect($validated)->except(['photos', 'remove_photos'])->toArray());
+
+            // Process photo removals before additions
+            if (!empty($validated['remove_photos'])) {
+                $this->deletePhotos($validated['remove_photos']);
+
+                $remainingPhotos = array_values(array_diff($product->photos ?? [], $validated['remove_photos']));
+                $product->update(['photos' => $remainingPhotos]);
+            }
+
+            if ($request->hasFile('photos')) {
+                $newPhotos = $this->uploadPhotos($request);
+                $product->update([
+                    'photos' => array_merge($product->photos ?? [], $newPhotos),
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Product updated successfully',
+                'data' => new ProductResource($product->fresh()->load('farmer')),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error updating product: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating product',
+                'error' => $e->getMessage(),
+            ], 500);
         }
     }
 

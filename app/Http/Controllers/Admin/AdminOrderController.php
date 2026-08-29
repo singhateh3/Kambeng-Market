@@ -75,18 +75,7 @@ class AdminOrderController extends Controller
             'status' => 'required|in:pending,confirmed,shipped,delivered,cancelled',
         ]);
 
-        $oldStatus = $order->status;
         $order->update(['status' => $request->status]);
-
-        // Log status change
-        activity()
-            ->performedOn($order)
-            ->causedBy($request->user())
-            ->withProperties([
-                'old_status' => $oldStatus,
-                'new_status' => $request->status,
-            ])
-            ->log('Order status changed');
 
         return response()->json([
             'success' => true,
