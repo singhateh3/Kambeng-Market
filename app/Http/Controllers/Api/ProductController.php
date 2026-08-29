@@ -119,12 +119,20 @@ class ProductController extends Controller
                     });
                 })
                 ->when($request->search, function ($query, $search) {
-                    return $query->where(function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%")
-                            ->orWhere('category', 'like', "%{$search}%")
-                            ->orWhere('description', 'like', "%{$search}%")
-                            ->orWhereHas('farmer', function ($farmerQuery) use ($search) {
-                                $farmerQuery->where('name', 'like', "%{$search}%");
+                    // Plain 'like' is case-sensitive on Postgres (production)
+                    // but case-insensitive on MySQL (local dev) — a search
+                    // worked locally and silently missed results in
+                    // production whenever the term's casing didn't exactly
+                    // match what was stored. LOWER(...) LIKE LOWER(...) is
+                    // portable across MySQL/Postgres/SQLite and behaves the
+                    // same everywhere.
+                    $term = '%' . mb_strtolower($search) . '%';
+                    return $query->where(function ($q) use ($term) {
+                        $q->whereRaw('LOWER(name) LIKE ?', [$term])
+                            ->orWhereRaw('LOWER(category) LIKE ?', [$term])
+                            ->orWhereRaw('LOWER(description) LIKE ?', [$term])
+                            ->orWhereHas('farmer', function ($farmerQuery) use ($term) {
+                                $farmerQuery->whereRaw('LOWER(name) LIKE ?', [$term]);
                             });
                     });
                 });
