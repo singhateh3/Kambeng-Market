@@ -26,8 +26,12 @@ class ProductController extends Controller
 
     public function __construct()
     {
-        // Configure Cloudinary if available
-        $cloudinaryUrl = env('CLOUDINARY_URL');
+        // Configure Cloudinary if available.
+        // Read via config(), not env() directly — production runs
+        // `php artisan config:cache` on every boot, after which env()
+        // calls outside config/*.php always return null, since Laravel
+        // stops reading .env entirely once a config cache file exists.
+        $cloudinaryUrl = config('services.cloudinary.url');
         if ($cloudinaryUrl) {
             try {
                 $this->cloudinary = new Cloudinary($cloudinaryUrl);

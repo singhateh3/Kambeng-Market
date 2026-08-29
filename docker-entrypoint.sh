@@ -18,6 +18,13 @@ php artisan route:cache
 php artisan event:cache
 php artisan migrate --force
 
+# Product/avatar uploads normally go to Cloudinary, but the app falls back
+# to local disk storage if the Cloudinary client failed to initialize (e.g.
+# a network hiccup during upload). Without this symlink that fallback path
+# 404s even immediately after upload. --force makes this safe to re-run on
+# every boot without erroring if the link already exists.
+php artisan storage:link --force
+
 # This app has no resources/views (API-only, no Blade templates) and no
 # config/view.php, so `view:cache` has nothing to cache and always fails
 # with "View path not found" — intentionally omitted.

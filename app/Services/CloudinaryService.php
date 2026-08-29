@@ -10,7 +10,10 @@ class CloudinaryService
 
     public function __construct()
     {
-        $this->cloudinary = new Cloudinary(env('CLOUDINARY_URL'));
+        // Read via config(), not env() directly — see ProductController
+        // for why (config:cache in production makes env() return null
+        // outside config/*.php files).
+        $this->cloudinary = new Cloudinary(config('services.cloudinary.url'));
     }
 
     public function upload($file, $folder = 'products')
