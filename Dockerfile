@@ -94,7 +94,8 @@ RUN mkdir -p storage bootstrap/cache && \
     chown -R www-data:www-data storage bootstrap/cache && \
     chmod -R 775 storage bootstrap/cache && \
     chown -R www-data:www-data /var/www && \
-    chmod -R 755 /var/www
+    chmod -R 755 /var/www && \
+    chmod +x docker-entrypoint.sh
 
 # ----------------------------
 # OPcache Configuration
@@ -214,4 +215,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Start: migrate then boot with Supervisor
 # Images are served from Cloudinary, no storage:link needed
 # ----------------------------
-CMD ["sh", "-c", "php artisan config:cache && php artisan route:cache && php artisan view:cache && php artisan event:cache && php artisan migrate --force && php artisan package:discover --ansi || true && supervisord -c /etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/var/www/docker-entrypoint.sh"]
