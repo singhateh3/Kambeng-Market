@@ -122,7 +122,10 @@ class ProductController extends Controller
                     return $query->where(function ($q) use ($search) {
                         $q->where('name', 'like', "%{$search}%")
                             ->orWhere('category', 'like', "%{$search}%")
-                            ->orWhere('description', 'like', "%{$search}%");
+                            ->orWhere('description', 'like', "%{$search}%")
+                            ->orWhereHas('farmer', function ($farmerQuery) use ($search) {
+                                $farmerQuery->where('name', 'like', "%{$search}%");
+                            });
                     });
                 });
 
