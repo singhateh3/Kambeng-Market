@@ -5,6 +5,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Dispute;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Review;
@@ -22,7 +23,7 @@ class OrderController extends Controller
         try {
             $user = $request->user();
 
-            $query = Order::with(['buyer', 'product', 'product.farmer', 'review']);
+            $query = Order::with(['buyer', 'product', 'product.farmer', 'review', 'dispute']);
 
             // If user is a farmer, show orders for their products
             if ($user->isFarmer()) {
@@ -190,7 +191,7 @@ class OrderController extends Controller
                 ], 403);
             }
 
-            $order->load(['buyer', 'product', 'product.farmer', 'review']);
+            $order->load(['buyer', 'product', 'product.farmer', 'review', 'dispute']);
 
             return response()->json([
                 'success' => true,
@@ -438,6 +439,80 @@ class OrderController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error submitting review: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Report an issue with an order (buyer only).
+     */
+    public function report(Request $request, Order $order): JsonResponse
+    {
+        try {
+            if ($request->user()->cannot('report', $order)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only the buyer can report an issue with this order',
+                ], 403);
+            }
+
+            $request->validate([
+                'reason' => 'required|in:' . implode(',', Dispute::REASONS),
+                'description' => 'nullable|string|max:1000',
+            ]);
+
+            // Reporting stands in for a dispute mechanism on orders that
+            // have actually progressed — pending orders can simply be
+            // cancelled (OrderController::cancel()), and cancelled orders
+            // are already a terminal, resolved state with nothing to
+            // dispute.
+            if (!in_array($order->status, Dispute::REPORTABLE_ORDER_STATUSES)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be reported in its current status.',
+                ], 422);
+            }
+
+            if ($order->dispute && in_array($order->dispute->status, Dispute::ACTIVE_STATUSES)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order already has an active dispute.',
+                ], 422);
+            }
+
+            $dispute = Dispute::create([
+                'order_id' => $order->id,
+                'reported_by' => $request->user()->id,
+                'reason' => $request->reason,
+                'description' => $request->description,
+                'status' => 'open',
+            ]);
+
+            $order->load('product.farmer', 'buyer');
+
+            try {
+                $notificationService = app(NotificationService::class);
+                $notificationService->disputeOpened($order->product->farmer, $order, $dispute);
+            } catch (\Exception $e) {
+                \Log::error('Error sending dispute opened notification: ' . $e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Issue reported successfully',
+                'data' => $dispute->load('reporter'),
+            ], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Error reporting order: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error reporting order: ' . $e->getMessage(),
             ], 500);
         }
     }

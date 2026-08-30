@@ -5,31 +5,31 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Order;
-use App\Models\Review;
-use Illuminate\Http\Request;
+use App\Http\Resources\DisputeResource;
+use App\Models\Dispute;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class AdminDisputeController extends Controller
 {
+    private const RELATIONS = ['order.buyer', 'order.product.farmer', 'order.review', 'reporter', 'reviewer'];
+
     /**
-     * Get all disputes/reported issues
+     * Get all disputes, optionally filtered by status.
      */
     public function index(Request $request): JsonResponse
     {
-        // This would need a disputes table
-        // For now, we'll get orders with issues
-        $disputes = Order::where('status', 'cancelled')
-            ->whereHas('review', function ($query) {
-                $query->where('rating', '<=', 2);
+        $disputes = Dispute::with(self::RELATIONS)
+            ->when($request->status, function ($query, $status) {
+                return $query->where('status', $status);
             })
-            ->with(['buyer', 'product.farmer', 'review'])
             ->latest()
-            ->paginate(20);
+            ->paginate($request->per_page ?? 20);
 
         return response()->json([
             'success' => true,
-            'data' => $disputes,
+            'data' => DisputeResource::collection($disputes),
             'meta' => [
                 'current_page' => $disputes->currentPage(),
                 'last_page' => $disputes->lastPage(),
@@ -40,21 +40,68 @@ class AdminDisputeController extends Controller
     }
 
     /**
-     * Resolve a dispute
+     * Get a specific dispute.
      */
-    public function resolve(Request $request, Order $order): JsonResponse
+    public function show(Dispute $dispute): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => new DisputeResource($dispute->load(self::RELATIONS)),
+        ]);
+    }
+
+    /**
+     * Move a dispute through its lifecycle: open -> under_review ->
+     * resolved/rejected. admin_note/reviewed_by/reviewed_at are only
+     * persisted on the terminal resolved/rejected transition.
+     */
+    public function updateStatus(Request $request, Dispute $dispute): JsonResponse
     {
         $request->validate([
-            'resolution' => 'required|string|max:500',
-            'action' => 'required|in:refund,resolved,escalated',
+            'status' => 'required|in:under_review,resolved,rejected',
+            'admin_note' => 'required_if:status,resolved,rejected|nullable|string|max:1000',
         ]);
 
-        // This would update a disputes table
-        // For now, we'll just log it
+        $validTransitions = [
+            'open' => ['under_review'],
+            'under_review' => ['resolved', 'rejected'],
+            'resolved' => [],
+            'rejected' => [],
+        ];
+
+        $newStatus = $request->status;
+
+        if (!in_array($newStatus, $validTransitions[$dispute->status] ?? [])) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot transition from '{$dispute->status}' to '{$newStatus}'",
+            ], 422);
+        }
+
+        $updates = ['status' => $newStatus];
+        $isTerminal = in_array($newStatus, ['resolved', 'rejected']);
+        if ($isTerminal) {
+            $updates['admin_note'] = $request->admin_note;
+            $updates['reviewed_by'] = $request->user()->id;
+            $updates['reviewed_at'] = now();
+        }
+
+        $dispute->update($updates);
+        $dispute->load(self::RELATIONS);
+
+        if ($isTerminal) {
+            try {
+                $notificationService = app(NotificationService::class);
+                $notificationService->disputeResolved($dispute->order->buyer, $dispute->order, $dispute);
+            } catch (\Exception $e) {
+                \Log::error('Error sending dispute resolved notification: ' . $e->getMessage());
+            }
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Dispute resolved successfully',
+            'message' => 'Dispute updated successfully',
+            'data' => new DisputeResource($dispute),
         ]);
     }
 }

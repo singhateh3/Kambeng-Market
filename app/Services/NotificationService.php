@@ -495,6 +495,67 @@ class NotificationService
     }
 
     /**
+     * Send dispute opened notification to the farmer AND admins
+     */
+    public function disputeOpened(User $farmer, $order, $dispute): Notification
+    {
+        $farmerNotification = $this->send(
+            $farmer,
+            'dispute_opened',
+            'Issue Reported ⚠️',
+            "{$order->buyer->name} reported an issue with their order for {$order->product->name}.",
+            [
+                'order_id' => $order->id,
+                'dispute_id' => $dispute->id,
+                'reason' => $dispute->reason,
+            ],
+            '⚠️',
+            "/orders/{$order->id}"
+        );
+
+        $this->sendToAdmins(
+            'dispute_opened',
+            'New Dispute Reported ⚠️',
+            "{$order->buyer->name} reported an issue with order #{$order->id} for {$order->product->name}.",
+            [
+                'order_id' => $order->id,
+                'dispute_id' => $dispute->id,
+                'farmer_id' => $farmer->id,
+                'reason' => $dispute->reason,
+            ],
+            '⚠️',
+            "/disputes" // Will become /app/admin/disputes for admin
+        );
+
+        return $farmerNotification;
+    }
+
+    /**
+     * Send dispute resolved/rejected notification to the buyer who reported it
+     */
+    public function disputeResolved(User $buyer, $order, $dispute): Notification
+    {
+        $isResolved = $dispute->status === 'resolved';
+        $message = "Your reported issue for {$order->product->name} has been "
+            . ($isResolved ? 'resolved' : 'rejected') . '.'
+            . ($dispute->admin_note ? " Note: {$dispute->admin_note}" : '');
+
+        return $this->send(
+            $buyer,
+            'dispute_resolved',
+            $isResolved ? 'Dispute Resolved ✅' : 'Dispute Rejected ❌',
+            $message,
+            [
+                'order_id' => $order->id,
+                'dispute_id' => $dispute->id,
+                'status' => $dispute->status,
+            ],
+            $isResolved ? '✅' : '❌',
+            "/orders/{$order->id}"
+        );
+    }
+
+    /**
      * Send farmer rejected notification to farmer AND admins
      */
     public function farmerRejected(User $farmer, string $reason): Notification

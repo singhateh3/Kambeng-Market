@@ -169,7 +169,8 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     // Dispute Management
     Route::prefix('disputes')->group(function () {
         Route::get('/', [AdminDisputeController::class, 'index']);
-        Route::post('/{order}/resolve', [AdminDisputeController::class, 'resolve']);
+        Route::get('/{dispute}', [AdminDisputeController::class, 'show']);
+        Route::patch('/{dispute}/status', [AdminDisputeController::class, 'updateStatus']);
     });
 });
 
@@ -218,6 +219,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{order}/status', [OrderController::class, 'updateStatus']);
         Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
         Route::post('/{order}/review', [OrderController::class, 'review']);
+        Route::post('/{order}/report', [OrderController::class, 'report']);
     });
 
     // Notification routes - updated to match frontend

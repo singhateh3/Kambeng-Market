@@ -74,6 +74,14 @@ class Order extends Model
     }
 
     /**
+     * Get the dispute for this order, if one has been reported.
+     */
+    public function dispute()
+    {
+        return $this->hasOne(Dispute::class);
+    }
+
+    /**
      * What payment_status should become as a side effect of transitioning
      * order status to $newOrderStatus, if anything — null means leave
      * payment_status exactly as it is (confirmed/shipped don't touch it).
