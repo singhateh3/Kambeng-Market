@@ -79,6 +79,13 @@ class OrderController extends Controller
                 'pickup_date' => 'nullable|date|after_or_equal:today',
                 'delivery_address' => 'required_if:delivery_method,farmer_delivery|nullable|string|max:500',
                 'special_instructions' => 'nullable|string|max:500',
+                // COD is the only accepted method today. Nullable + a
+                // server-side default below rather than 'required' so an
+                // existing client that never sends this field still works
+                // — the field isn't trusted from the client either way,
+                // it's validated against the same fixed allow-list the
+                // column itself enforces.
+                'payment_method' => 'nullable|string|in:cod',
             ]);
 
             $product = Product::findOrFail($request->product_id);
@@ -110,6 +117,12 @@ class OrderController extends Controller
                 'special_instructions' => $request->special_instructions,
                 'status' => 'pending',
                 'order_date' => now(),
+                // Explicit rather than relying on the column default, so
+                // it's clear at the call site that a COD order is never
+                // created as anything but pending — placing an order is
+                // not a payment event.
+                'payment_method' => $request->payment_method ?? 'cod',
+                'payment_status' => 'pending',
             ];
 
             // Set the appropriate date (and address) based on delivery method
@@ -231,7 +244,18 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            $order->update(['status' => $newStatus]);
+            // payment_status is derived as a side effect of this same
+            // transition (delivered -> paid for COD, cancelled ->
+            // cancelled) rather than being independently settable — there
+            // is no request field for it, so a farmer can only ever move
+            // it by taking the same action (confirm/ship/deliver/cancel)
+            // they're already authorized to take above, for the reason
+            // they're already taking it.
+            $updates = ['status' => $newStatus];
+            if ($derivedPaymentStatus = $order->derivedPaymentStatus($newStatus)) {
+                $updates['payment_status'] = $derivedPaymentStatus;
+            }
+            $order->update($updates);
 
             // If order is delivered, update product status to sold
             if ($newStatus === 'delivered') {
@@ -313,7 +337,10 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            $order->update(['status' => 'cancelled']);
+            $order->update([
+                'status' => 'cancelled',
+                'payment_status' => $order->derivedPaymentStatus('cancelled'),
+            ]);
 
             // Send cancellation notifications
             try {

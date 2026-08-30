@@ -17,6 +17,9 @@ class OrderResource extends JsonResource
             'status' => $this->status,
             'status_label' => $this->getStatusLabel(),
             'status_color' => $this->getStatusColor(),
+            'payment_method' => $this->payment_method,
+            'payment_status' => $this->payment_status,
+            'payment_status_label' => $this->getPaymentStatusLabel(),
             'special_instructions' => $this->special_instructions,
             'delivery_method' => $this->delivery_method,
             'delivery_method_label' => $this->getDeliveryMethodLabel(),
@@ -61,6 +64,18 @@ class OrderResource extends JsonResource
             'delivered' => 'green',
             'cancelled' => 'red',
             default => 'gray',
+        };
+    }
+
+    protected function getPaymentStatusLabel(): string
+    {
+        return match ($this->payment_status) {
+            'pending' => 'Payment pending',
+            'paid' => 'Paid',
+            'failed' => 'Payment failed',
+            'cancelled' => 'Payment cancelled',
+            'refunded' => 'Refunded',
+            default => ucfirst($this->payment_status ?? 'pending'),
         };
     }
 

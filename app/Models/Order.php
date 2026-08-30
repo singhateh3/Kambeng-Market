@@ -22,6 +22,8 @@ class Order extends Model
         'pickup_date',
         'delivery_address',
         'order_date',
+        'payment_method',
+        'payment_status',
     ];
 
     protected $casts = [
@@ -69,6 +71,26 @@ class Order extends Model
     public function review()
     {
         return $this->hasOne(Review::class);
+    }
+
+    /**
+     * What payment_status should become as a side effect of transitioning
+     * order status to $newOrderStatus, if anything — null means leave
+     * payment_status exactly as it is (confirmed/shipped don't touch it).
+     * Shared by OrderController and AdminOrderController so both apply the
+     * same COD-at-delivery rule instead of duplicating it.
+     */
+    public function derivedPaymentStatus(string $newOrderStatus): ?string
+    {
+        if ($newOrderStatus === 'delivered' && $this->payment_method === 'cod') {
+            return 'paid';
+        }
+
+        if ($newOrderStatus === 'cancelled') {
+            return 'cancelled';
+        }
+
+        return null;
     }
 
     /**

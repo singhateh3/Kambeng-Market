@@ -75,7 +75,13 @@ class AdminOrderController extends Controller
             'status' => 'required|in:pending,confirmed,shipped,delivered,cancelled',
         ]);
 
-        $order->update(['status' => $request->status]);
+        // Same COD-at-delivery / cancelled derivation as the farmer-facing
+        // OrderController::updateStatus() — see Order::derivedPaymentStatus().
+        $updates = ['status' => $request->status];
+        if ($derivedPaymentStatus = $order->derivedPaymentStatus($request->status)) {
+            $updates['payment_status'] = $derivedPaymentStatus;
+        }
+        $order->update($updates);
 
         return response()->json([
             'success' => true,
