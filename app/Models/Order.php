@@ -82,6 +82,27 @@ class Order extends Model
     }
 
     /**
+     * The only status changes allowed from a given current status. Shared
+     * by OrderController and AdminOrderController — previously only the
+     * farmer-facing controller enforced this, so an admin call could jump
+     * an order straight from 'pending' to 'delivered' in one request,
+     * silently triggering the COD-auto-paid derivation below without the
+     * order ever passing through 'confirmed'/'shipped'.
+     */
+    public const VALID_STATUS_TRANSITIONS = [
+        'pending' => ['confirmed', 'cancelled'],
+        'confirmed' => ['shipped', 'cancelled'],
+        'shipped' => ['delivered', 'cancelled'],
+        'delivered' => [],
+        'cancelled' => [],
+    ];
+
+    public function canTransitionTo(string $newStatus): bool
+    {
+        return in_array($newStatus, self::VALID_STATUS_TRANSITIONS[$this->status] ?? []);
+    }
+
+    /**
      * What payment_status should become as a side effect of transitioning
      * order status to $newOrderStatus, if anything — null means leave
      * payment_status exactly as it is (confirmed/shipped don't touch it).

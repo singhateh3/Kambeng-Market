@@ -103,7 +103,8 @@ class ProductController extends Controller
     {
         try {
             $query = Product::with(['farmer' => function ($query) {
-                $query->select('id', 'name', 'phone', 'location', 'avatar');
+                // No phone/email — this endpoint is public, unauthenticated.
+                $query->select('id', 'name', 'location', 'avatar');
             }])
                 ->withCount('orders')
                 ->active()
@@ -225,7 +226,8 @@ class ProductController extends Controller
         try {
             $product->load([
                 'farmer' => function ($query) {
-                    $query->select('id', 'name', 'phone', 'location', 'avatar', 'email');
+                    // No phone/email — this endpoint is public, unauthenticated.
+                    $query->select('id', 'name', 'location', 'avatar');
                 },
                 'farmer.farmerProfile',
                 'orders' => function ($query) {

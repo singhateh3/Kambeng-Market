@@ -75,6 +75,18 @@ class AdminOrderController extends Controller
             'status' => 'required|in:pending,confirmed,shipped,delivered,cancelled',
         ]);
 
+        // Same transition rules as the farmer-facing OrderController::
+        // updateStatus() — see Order::VALID_STATUS_TRANSITIONS. Previously
+        // missing here, which let an admin jump e.g. pending -> delivered
+        // in one call and silently trigger the COD-auto-paid derivation
+        // below without the order passing through confirmed/shipped.
+        if (!$order->canTransitionTo($request->status)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot transition from '{$order->status}' to '{$request->status}'",
+            ], 422);
+        }
+
         // Same COD-at-delivery / cancelled derivation as the farmer-facing
         // OrderController::updateStatus() — see Order::derivedPaymentStatus().
         $updates = ['status' => $request->status];

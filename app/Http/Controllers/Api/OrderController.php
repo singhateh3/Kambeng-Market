@@ -180,11 +180,7 @@ class OrderController extends Controller
             // Check if user is authorized to view this order
             $user = auth()->user();
 
-            // Allow if user is the buyer, or the farmer who owns the product, or admin
-            $isBuyer = $user->id === $order->buyer_id;
-            $isFarmer = $user->isFarmer() && $order->product->farmer_id === $user->id;
-
-            if (!$isBuyer && !$isFarmer && !$user->isAdmin()) {
+            if ($user->cannot('view', $order)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized to view this order',
@@ -217,28 +213,18 @@ class OrderController extends Controller
 
             // Check if user is authorized
             $user = auth()->user();
-            $isFarmer = $user->isFarmer() && $order->product->farmer_id === $user->id;
 
-            if (!$isFarmer && !$user->isAdmin()) {
+            if ($user->cannot('updateStatus', $order)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Only the farmer can update order status',
                 ], 403);
             }
 
-            // Validate status transition
-            $validTransitions = [
-                'pending' => ['confirmed', 'cancelled'],
-                'confirmed' => ['shipped', 'cancelled'],
-                'shipped' => ['delivered', 'cancelled'],
-                'delivered' => [],
-                'cancelled' => [],
-            ];
-
             $currentStatus = $order->status;
             $newStatus = $request->status;
 
-            if (!in_array($newStatus, $validTransitions[$currentStatus] ?? [])) {
+            if (!$order->canTransitionTo($newStatus)) {
                 return response()->json([
                     'success' => false,
                     'message' => "Cannot transition from '{$currentStatus}' to '{$newStatus}'",
@@ -320,10 +306,8 @@ class OrderController extends Controller
     {
         try {
             $user = auth()->user();
-            $isBuyer = $user->id === $order->buyer_id;
-            $isFarmer = $user->isFarmer() && $order->product->farmer_id === $user->id;
 
-            if (!$isBuyer && !$isFarmer && !$user->isAdmin()) {
+            if ($user->cannot('cancel', $order)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized to cancel this order',
@@ -385,7 +369,7 @@ class OrderController extends Controller
             ]);
 
             // Check if user is the buyer
-            if (auth()->id() !== $order->buyer_id) {
+            if ($request->user()->cannot('review', $order)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Only the buyer can review this order',

@@ -9,11 +9,52 @@ use App\Models\User;
 
 class OrderPolicy
 {
+    private function isOwningFarmer(User $user, Order $order): bool
+    {
+        return $user->isFarmer() && $order->product->farmer_id === $user->id;
+    }
+
     /**
-     * Whether $user may report an issue against $order. Scoped to the
-     * dispute-reporting flow only — the rest of OrderController keeps its
-     * existing inline ownership checks (isBuyer/isFarmer/isAdmin), which
-     * this policy deliberately does not replace.
+     * View a single order — buyer, the farmer who owns the product, or admin.
+     */
+    public function view(User $user, Order $order): bool
+    {
+        return $user->id === $order->buyer_id
+            || $this->isOwningFarmer($user, $order)
+            || $user->isAdmin();
+    }
+
+    /**
+     * Advance order status — the owning farmer or admin only, never the buyer.
+     */
+    public function updateStatus(User $user, Order $order): bool
+    {
+        return $this->isOwningFarmer($user, $order) || $user->isAdmin();
+    }
+
+    /**
+     * Cancel an order — buyer, the owning farmer, or admin.
+     */
+    public function cancel(User $user, Order $order): bool
+    {
+        return $user->id === $order->buyer_id
+            || $this->isOwningFarmer($user, $order)
+            || $user->isAdmin();
+    }
+
+    /**
+     * Review an order — the buyer only. No admin/farmer bypass — a review
+     * is the buyer's own opinion, not something anyone else can submit on
+     * their behalf.
+     */
+    public function review(User $user, Order $order): bool
+    {
+        return $user->id === $order->buyer_id;
+    }
+
+    /**
+     * Report an issue with an order — the buyer only. See DisputeTest for
+     * the authorization tests covering this.
      */
     public function report(User $user, Order $order): bool
     {

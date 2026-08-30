@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\FarmerProfile\UpdateFarmerProfileRequest;
 use App\Http\Resources\FarmerProfileResource;
+use App\Http\Resources\PublicFarmerProfileResource;
 use App\Http\Resources\UserResource;
 use App\Models\FarmerProfile;
 use App\Models\Order;
@@ -90,9 +91,12 @@ class FarmerProfileController extends Controller
     }
 
     /**
-     * Get public farmer profile (for buyers).
+     * Get public farmer profile (for buyers). Unauthenticated — deliberately
+     * uses PublicFarmerProfileResource, not FarmerProfileResource, which
+     * exposes email/phone/revenue/internal timestamps appropriate only for
+     * the farmer viewing their own profile via show() above.
      */
-    public function publicShow(int $userId): FarmerProfileResource
+    public function publicShow(int $userId): PublicFarmerProfileResource
     {
         // Explicit operator to avoid any ambiguous parsing issues
         $profile = FarmerProfile::where('user_id', '=', $userId)
@@ -101,7 +105,7 @@ class FarmerProfileController extends Controller
             }])
             ->firstOrFail();
 
-        return new FarmerProfileResource($profile);
+        return new PublicFarmerProfileResource($profile);
     }
 
     /**
