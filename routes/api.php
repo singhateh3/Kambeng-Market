@@ -38,6 +38,7 @@ Route::get('/public/statistics', [PublicController::class, 'statistics']);
 // Public product routes (view only)
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/categories', [ProductController::class, 'categories']);
+Route::get('/products/regions', [ProductController::class, 'regions']);
 Route::get('/products/featured', [ProductController::class, 'featured']);
 Route::get('/products/{product}', [ProductController::class, 'show']);
 
@@ -156,11 +157,6 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         Route::delete('/{product}', [AdminProductController::class, 'destroy']);
         Route::post('/bulk-delete', [AdminProductController::class, 'bulkDelete']);
     });
-
-    // product search
-    Route::get('/products/search', [ProductController::class, 'search']);
-    Route::get('/products/autocomplete', [ProductController::class, 'autocomplete']);
-    Route::get('/products/{product}/related', [ProductController::class, 'related']);
 
     // Order Management
     Route::prefix('orders')->group(function () {

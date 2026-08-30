@@ -114,8 +114,13 @@ class ProductController extends Controller
                     return $query->where('category', '=', $category);
                 })
                 ->when($request->region, function ($query, $region) {
-                    return $query->whereHas('farmer', function ($query) use ($region) {
-                        $query->where('location', 'like', "%{$region}%");
+                    // See the search block below: plain 'like' is
+                    // case-sensitive on Postgres (production) but not on
+                    // MySQL (local dev), so this must use the same
+                    // LOWER(...) LIKE LOWER(...) portable pattern.
+                    $term = '%' . mb_strtolower($region) . '%';
+                    return $query->whereHas('farmer', function ($query) use ($term) {
+                        $query->whereRaw('LOWER(location) LIKE ?', [$term]);
                     });
                 })
                 ->when($request->search, function ($query, $search) {
@@ -152,252 +157,6 @@ class ProductController extends Controller
                 'success' => false,
                 'message' => 'Error fetching products',
                 'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Advanced search with filters, sorting, and pagination
-     */
-    public function search(Request $request): JsonResponse
-    {
-        try {
-            $query = Product::with(['farmer' => function ($q) {
-                $q->select('id', 'name', 'location', 'avatar', 'phone');
-            }])
-                ->withAvg('reviews', 'rating')
-                ->withCount('orders')
-                ->active();
-
-            // Search term - search in product name, category, description, and farmer name
-            if ($request->filled('search')) {
-                $searchTerm = $request->search;
-                $query->where(function ($q) use ($searchTerm) {
-                    $q->where('name', 'LIKE', "%{$searchTerm}%")
-                        ->orWhere('category', 'LIKE', "%{$searchTerm}%")
-                        ->orWhere('description', 'LIKE', "%{$searchTerm}%")
-                        ->orWhereHas('farmer', function ($q) use ($searchTerm) {
-                            $q->where('name', 'LIKE', "%{$searchTerm}%")
-                                ->orWhere('location', 'LIKE', "%{$searchTerm}%");
-                        });
-                });
-            }
-
-            // Category filter
-            if ($request->filled('category')) {
-                $categories = is_array($request->category)
-                    ? $request->category
-                    : explode(',', $request->category);
-                $query->whereIn('category', $categories);
-            }
-
-            // Price range filter
-            if ($request->filled('min_price')) {
-                $query->where('price', '>=', (float) $request->min_price);
-            }
-            if ($request->filled('max_price')) {
-                $query->where('price', '<=', (float) $request->max_price);
-            }
-
-            // Location filter
-            if ($request->filled('location')) {
-                $query->whereHas('farmer', function ($q) use ($request) {
-                    $q->where('location', 'LIKE', "%{$request->location}%");
-                });
-            }
-
-            // Availability filter (in stock)
-            if ($request->filled('in_stock')) {
-                $query->where('quantity', '>', 0);
-            }
-
-            // Rating filter
-            if ($request->filled('min_rating')) {
-                $query->having('reviews_avg_rating', '>=', (float) $request->min_rating);
-            }
-
-            // Status filter (for farmer's own products)
-            if ($request->filled('status')) {
-                $query->where('status', $request->status);
-            }
-
-            // Sort options
-            $sortField = $request->sort_by ?? 'created_at';
-            $sortOrder = $request->sort_order ?? 'desc';
-
-            $allowedSorts = ['name', 'price', 'created_at', 'quantity', 'rating', 'orders_count'];
-            if (in_array($sortField, $allowedSorts)) {
-                if ($sortField === 'rating') {
-                    $query->orderBy('reviews_avg_rating', $sortOrder);
-                } elseif ($sortField === 'orders_count') {
-                    $query->orderBy('orders_count', $sortOrder);
-                } else {
-                    $query->orderBy($sortField, $sortOrder);
-                }
-            }
-
-            // Pagination
-            $perPage = $request->per_page ?? 20;
-            $products = $query->paginate($perPage);
-
-            // Get filter options for frontend
-            $filterOptions = [
-                'categories' => Product::select('category')
-                    ->distinct()
-                    ->whereNotNull('category')
-                    ->where('status', 'active')
-                    ->pluck('category')
-                    ->filter()
-                    ->values(),
-                'min_price' => Product::where('status', 'active')->min('price') ?? 0,
-                'max_price' => Product::where('status', 'active')->max('price') ?? 1000,
-                'locations' => User::where('role', 'farmer')
-                    ->whereNotNull('location')
-                    ->distinct()
-                    ->pluck('location')
-                    ->filter()
-                    ->values(),
-            ];
-
-            // Format products for response
-            $formattedProducts = $products->map(function ($product) {
-                return [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'category' => $product->category,
-                    'price' => $product->price,
-                    'price_formatted' => $product->price_formatted,
-                    'quantity' => $product->quantity,
-                    'unit' => $product->unit,
-                    'photos' => $product->photos,
-                    'status' => $product->status,
-                    'description' => $product->description,
-                    'avg_rating' => round($product->reviews_avg_rating ?? 0, 1),
-                    'orders_count' => $product->orders_count,
-                    'farmer' => $product->farmer ? [
-                        'id' => $product->farmer->id,
-                        'name' => $product->farmer->name,
-                        'location' => $product->farmer->location,
-                        'avatar' => $product->farmer->avatar,
-                    ] : null,
-                    'created_at' => $product->created_at,
-                ];
-            });
-
-            return response()->json([
-                'success' => true,
-                'data' => $formattedProducts,
-                'meta' => [
-                    'current_page' => $products->currentPage(),
-                    'last_page' => $products->lastPage(),
-                    'per_page' => $products->perPage(),
-                    'total' => $products->total(),
-                ],
-                'filters' => $filterOptions,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Search error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error performing search: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Get autocomplete suggestions
-     */
-    public function autocomplete(Request $request): JsonResponse
-    {
-        try {
-            $searchTerm = $request->search;
-            $type = $request->type ?? 'all';
-
-            if (empty($searchTerm) || strlen($searchTerm) < 2) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [],
-                ]);
-            }
-
-            $suggestions = [];
-
-            // Search products
-            if ($type === 'all' || $type === 'products') {
-                $products = Product::where('status', 'active')
-                    ->where(function ($q) use ($searchTerm) {
-                        $q->where('name', 'LIKE', "%{$searchTerm}%")
-                            ->orWhere('category', 'LIKE', "%{$searchTerm}%");
-                    })
-                    ->limit(5)
-                    ->get(['id', 'name', 'category', 'price'])
-                    ->map(function ($product) {
-                        return [
-                            'id' => $product->id,
-                            'label' => $product->name,
-                            'type' => 'product',
-                            'subtext' => $product->category . ' - ' . $product->price_formatted,
-                            'link' => '/app/products/' . $product->id,
-                            'icon' => '🌾',
-                        ];
-                    });
-                $suggestions = array_merge($suggestions, $products->toArray());
-            }
-
-            // Search farmers
-            if ($type === 'all' || $type === 'farmers') {
-                $farmers = User::where('role', 'farmer')
-                    ->where(function ($q) use ($searchTerm) {
-                        $q->where('name', 'LIKE', "%{$searchTerm}%")
-                            ->orWhere('location', 'LIKE', "%{$searchTerm}%");
-                    })
-                    ->limit(3)
-                    ->get(['id', 'name', 'location'])
-                    ->map(function ($farmer) {
-                        return [
-                            'id' => $farmer->id,
-                            'label' => $farmer->name,
-                            'type' => 'farmer',
-                            'subtext' => $farmer->location ?? 'Farmer',
-                            'link' => '/app/farmers/' . $farmer->id,
-                            'icon' => '👨‍🌾',
-                        ];
-                    });
-                $suggestions = array_merge($suggestions, $farmers->toArray());
-            }
-
-            // Search categories
-            if ($type === 'all' || $type === 'categories') {
-                $categories = Product::where('status', 'active')
-                    ->where('category', 'LIKE', "%{$searchTerm}%")
-                    ->distinct()
-                    ->limit(3)
-                    ->pluck('category')
-                    ->map(function ($category) {
-                        return [
-                            'id' => $category,
-                            'label' => $category,
-                            'type' => 'category',
-                            'subtext' => 'Category',
-                            'link' => '/app/browse?category=' . urlencode($category),
-                            'icon' => '📂',
-                        ];
-                    });
-                $suggestions = array_merge($suggestions, $categories->toArray());
-            }
-
-            // Limit total suggestions
-            $suggestions = array_slice($suggestions, 0, 10);
-
-            return response()->json([
-                'success' => true,
-                'data' => $suggestions,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Autocomplete error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error getting suggestions: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -815,6 +574,39 @@ class ProductController extends Controller
     }
 
     /**
+     * Get farmer regions (locations) for filtering, sourced from farmers
+     * with at least one active product.
+     */
+    public function regions(): JsonResponse
+    {
+        try {
+            $regions = User::where('role', 'farmer')
+                ->whereNotNull('location')
+                ->whereHas('products', function ($query) {
+                    $query->active();
+                })
+                ->select('location')
+                ->distinct()
+                ->pluck('location')
+                ->sort()
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => $regions,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching regions: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching regions',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Get featured products
      */
     public function featured()
@@ -842,31 +634,4 @@ class ProductController extends Controller
         }
     }
 
-    /**
-     * Get related products for a product
-     */
-    public function related(Product $product): JsonResponse
-    {
-        try {
-            $related = Product::where('id', '!=', $product->id)
-                ->where('category', $product->category)
-                ->active()
-                ->with(['farmer' => function ($query) {
-                    $query->select('id', 'name', 'location');
-                }])
-                ->limit(6)
-                ->get();
-
-            return response()->json([
-                'success' => true,
-                'data' => $related,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching related products: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error fetching related products',
-            ], 500);
-        }
-    }
 }

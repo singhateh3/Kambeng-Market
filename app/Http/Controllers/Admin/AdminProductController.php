@@ -30,14 +30,20 @@ class AdminProductController extends Controller
                     return $query->where('farmer_id', $farmerId);
                 })
                 ->when($request->search, function ($query, $search) {
-                    return $query->where(function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%")
-                            ->orWhere('category', 'like', "%{$search}%")
-                            ->orWhere('description', 'like', "%{$search}%")
-                            ->orWhereHas('farmer', function ($q) use ($search) {
-                                $q->where('name', 'like', "%{$search}%")
-                                    ->orWhere('email', 'like', "%{$search}%")
-                                    ->orWhere('location', 'like', "%{$search}%");
+                    // Plain 'like' is case-sensitive on Postgres (production)
+                    // but not on MySQL (local dev) — LOWER(...) LIKE LOWER(...)
+                    // is portable and behaves the same everywhere. Mirrors
+                    // the fix already applied to the buyer-facing search in
+                    // ProductController::index().
+                    $term = '%' . mb_strtolower($search) . '%';
+                    return $query->where(function ($q) use ($term) {
+                        $q->whereRaw('LOWER(name) LIKE ?', [$term])
+                            ->orWhereRaw('LOWER(category) LIKE ?', [$term])
+                            ->orWhereRaw('LOWER(description) LIKE ?', [$term])
+                            ->orWhereHas('farmer', function ($q) use ($term) {
+                                $q->whereRaw('LOWER(name) LIKE ?', [$term])
+                                    ->orWhereRaw('LOWER(email) LIKE ?', [$term])
+                                    ->orWhereRaw('LOWER(location) LIKE ?', [$term]);
                             });
                     });
                 })
