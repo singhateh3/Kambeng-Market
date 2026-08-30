@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PublicController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\SavedFarmerController;
 use Illuminate\Support\Facades\DB;
 
 /*
@@ -220,6 +221,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
         Route::post('/{order}/review', [OrderController::class, 'review']);
         Route::post('/{order}/report', [OrderController::class, 'report']);
+    });
+
+    // Saved Farmers (buyer only — enforced in SavedFarmerController)
+    Route::prefix('saved-farmers')->group(function () {
+        Route::get('/', [SavedFarmerController::class, 'index']);
+        Route::post('/{farmer}', [SavedFarmerController::class, 'store']);
+        Route::delete('/{farmer}', [SavedFarmerController::class, 'destroy']);
     });
 
     // Notification routes - updated to match frontend
