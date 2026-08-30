@@ -69,5 +69,17 @@ return Application::configure(basePath: dirname(__DIR__))
                 ], 404);
             }
         });
+
+        // Handle rate-limited requests for API — thrown by the throttle
+        // middleware on /login, /register, /forgot-password.
+        $exceptions->render(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $e, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Too many attempts. Please try again later.',
+                    'code' => 'TOO_MANY_ATTEMPTS',
+                ], 429, $e->getHeaders());
+            }
+        });
     })
     ->create();

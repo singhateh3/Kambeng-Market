@@ -12,23 +12,23 @@ services:
       - key: APP_DEBUG
         value: false
       - key: APP_KEY
-        value: base64:KnCT2lhY404CpLVtApvRuV6ImM9ImA41rxZjeRDxwEI=
+        sync: false
       - key: DB_CONNECTION
         value: pgsql
       - key: DB_HOST
-        value: dpg-d8v2obcm0tmc738r7tqg-a.oregon-postgres.render.com
+        sync: false
       - key: DB_PORT
-        value: 5432
+        sync: false
       - key: DB_DATABASE
-        value: kambeng_user_3ghn
+        sync: false
       - key: DB_USERNAME
-        value: kambeng_user_3ghn_user
+        sync: false
       - key: DB_PASSWORD
-        value: WVoILpdRaZPlbvYjwvaUS4g08wjV2BMT
+        sync: false
       - key: DB_SSLMODE
         value: require
       - key: CLOUDINARY_URL
-        value: cloudinary://677657944542481:qdBwwhj_P9VrVCKDylSkQu_zMQU@dypckwt3d
+        sync: false
       - key: FRONTEND_URL
         value: https://kambeng-market-frontend.vercel.app
       - key: CACHE_STORE
@@ -37,3 +37,5 @@ services:
         value: database
       - key: QUEUE_CONNECTION
         value: database
+      - key: SANCTUM_TOKEN_EXPIRATION
+        value: 43200

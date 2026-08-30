@@ -56,9 +56,18 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
+    | Checked dynamically against each token's created_at on every request
+    | (see Sanctum\Guard), so this also retroactively caps tokens that were
+    | already issued before this was set — not just newly-created ones.
+    |
+    | The app has no refresh-token flow in active use (AuthController's
+    | refreshToken() exists but the frontend never calls it), so this is a
+    | flat expiration with no silent renewal: once a token passes this age,
+    | its next request gets a 401 and the user has to log in again.
+    |
     */
 
-    'expiration' => null,
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 43200), // 30 days, in minutes
 
     /*
     |--------------------------------------------------------------------------

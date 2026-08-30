@@ -18,7 +18,6 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PublicController;
 use App\Http\Controllers\Api\ProfileController;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /*
 |--------------------------------------------------------------------------
@@ -30,10 +29,10 @@ use Illuminate\Support\Facades\Schema;
 // PUBLIC ROUTES (No authentication required)
 // ============================================
 
-// Auth
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+// Auth — rate limiters defined in AppServiceProvider::configureRateLimiting()
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:forgot-password');
 Route::get('/public/statistics', [PublicController::class, 'statistics']);
 
 // Public product routes (view only)
@@ -51,126 +50,69 @@ Route::get('/keep-alive', function () {
 Route::get('/farmers/{userId}/profile', [FarmerProfileController::class, 'publicShow']);
 
 // ============================================
-// DEBUG ROUTES (Add these at the top for testing)
+// LOCAL-DEVELOPMENT-ONLY ROUTES
 // ============================================
-
-// Debug route - Check database connection
-Route::get('/debug', function () {
-    $errors = [];
-
-    // Check PHP version
-    $errors['php_version'] = phpversion();
-
-    // Check database connection
-    try {
-        DB::connection()->getPdo();
-        $errors['database'] = '✅ Connected';
-
-        // Check if users table exists
-        $hasUsers = Schema::hasTable('users');
-        $errors['users_table'] = $hasUsers ? '✅ Exists' : '❌ Missing';
-
-        // List all tables
-        $tables = DB::select('SELECT tablename FROM pg_tables WHERE schemaname = \'public\'');
-        $errors['tables'] = array_column($tables, 'tablename');
-    } catch (\Exception $e) {
-        $errors['database'] = '❌ ' . $e->getMessage();
-    }
-
-    // Check environment
-    $errors['environment'] = app()->environment();
-    $errors['app_url'] = config('app.url');
-    $errors['db_host'] = config('database.connections.pgsql.host');
-    $errors['db_database'] = config('database.connections.pgsql.database');
-
-    return response()->json($errors);
-});
-
-// Database test route
-Route::get('/db-test', function () {
-    try {
-        $pdo = DB::connection()->getPdo();
-        $tables = DB::select('SELECT tablename FROM pg_tables WHERE schemaname = \'public\'');
-        return response()->json([
-            'success' => true,
-            'message' => 'Database connected!',
-            'tables' => array_column($tables, 'tablename')
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'error' => $e->getMessage()
-        ], 500);
-    }
-});
-
-// Migration route - Run migrations
-Route::get('/migrate', function () {
-    try {
-        \Artisan::call('migrate', ['--force' => true]);
-        return response()->json([
-            'success' => true,
-            'message' => '✅ Migrations complete!',
-            'output' => \Artisan::output()
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'error' => $e->getMessage()
-        ], 500);
-    }
-});
-
-// Create test user
-Route::get('/create-test-user', function () {
-    try {
-        // Check if user already exists
-        $existing = \App\Models\User::where('email', 'test@test.com')->first();
-        if ($existing) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Test user already exists',
-                'user' => $existing
-            ]);
+// Registered only when running locally — never present in production
+// (Render sets APP_ENV=production, see render.yaml). Deliberately minimal
+// even here: no database host/name, credentials, or table/schema listings.
+//
+// No local /migrate route: migrations already run automatically on every
+// deploy via docker-entrypoint.sh, so an HTTP-triggered equivalent would
+// be redundant as well as risky. No local /create-test-user route either
+// — `php artisan tinker` covers that need without a standing route.
+if (app()->environment('local')) {
+    // Lightweight connectivity/environment check.
+    Route::get('/debug', function () {
+        $database = 'not connected';
+        try {
+            DB::connection()->getPdo();
+            $database = 'connected';
+        } catch (\Exception) {
+            // Deliberately not surfacing the exception message — connection
+            // exceptions often embed the host/port in the text.
         }
 
-        $user = \App\Models\User::create([
-            'name' => 'Test User',
-            'email' => 'test@test.com',
-            'password' => bcrypt('password'),
-            'role' => 'buyer'
+        return response()->json([
+            'php_version' => phpversion(),
+            'environment' => app()->environment(),
+            'database' => $database,
         ]);
-        return response()->json([
-            'success' => true,
-            'message' => '✅ Test user created!',
-            'user' => $user
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'error' => $e->getMessage()
-        ], 500);
-    }
-});
+    });
 
-// seed into the database
+    // Database connectivity check only — no schema/table details.
+    Route::get('/db-test', function () {
+        try {
+            DB::connection()->getPdo();
+            return response()->json([
+                'success' => true,
+                'message' => 'Database connected!',
+            ]);
+        } catch (\Exception) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Database connection failed.',
+            ], 500);
+        }
+    });
 
-Route::get('/seed-database', function () {
-    try {
-        \Artisan::call('db:seed', ['--force' => true]);
+    // Seed the local database.
+    Route::get('/seed-database', function () {
+        try {
+            \Artisan::call('db:seed', ['--force' => true]);
 
-        return response()->json([
-            'success' => true,
-            'message' => '✅ Database seeded successfully!',
-            'output' => \Artisan::output()
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'error' => $e->getMessage()
-        ], 500);
-    }
-});
+            return response()->json([
+                'success' => true,
+                'message' => '✅ Database seeded successfully!',
+                'output' => \Artisan::output()
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    });
+}
 // ============================================
 // ADMIN ROUTES (Authentication + Admin role required)
 // ============================================
@@ -293,35 +235,24 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 });
 
-// ============================================
-// TEST ROUTES (Development only)
-// ============================================
-Route::get('/admin/test', function () {
-    return response()->json([
-        'message' => 'Admin access confirmed!',
-        'user' => auth()->user()->only(['id', 'name', 'email', 'role'])
-    ]);
-})->middleware(['auth:sanctum', 'admin']);
+// Route::get('/debug-product/{id}', function ($id) {
+//     $product = \App\Models\Product::with(['farmer'])->find($id);
 
+//     if (!$product) {
+//         return response()->json([
+//             'exists' => false,
+//             'message' => "Product with ID {$id} not found"
+//         ], 404);
+//     }
 
-Route::get('/debug-product/{id}', function ($id) {
-    $product = \App\Models\Product::with(['farmer'])->find($id);
-
-    if (!$product) {
-        return response()->json([
-            'exists' => false,
-            'message' => "Product with ID {$id} not found"
-        ], 404);
-    }
-
-    return response()->json([
-        'exists' => true,
-        'product' => $product,
-        'has_farmer' => $product->farmer ? true : false,
-        'farmer_data' => $product->farmer,
-        'status' => $product->status,
-        'quantity' => $product->quantity,
-        'is_available' => $product->status === 'active' && $product->quantity > 0,
-        'product_link' => "/app/products/{$product->id}",
-    ]);
-});
+//     return response()->json([
+//         'exists' => true,
+//         'product' => $product,
+//         'has_farmer' => $product->farmer ? true : false,
+//         'farmer_data' => $product->farmer,
+//         'status' => $product->status,
+//         'quantity' => $product->quantity,
+//         'is_available' => $product->status === 'active' && $product->quantity > 0,
+//         'product_link' => "/app/products/{$product->id}",
+//     ]);
+// });
