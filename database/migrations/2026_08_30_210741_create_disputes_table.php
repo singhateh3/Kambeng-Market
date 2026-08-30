@@ -39,12 +39,21 @@ return new class extends Migration
 
         // Only one active (open/under_review) dispute per order — enforced
         // here as a real DB-level backstop for the application-level
-        // duplicate check in OrderController::report(), which is what
-        // actually runs on every driver (including MySQL locally and
-        // SQLite in tests, neither of which support a filtered/partial
-        // unique index the way Postgres does). Production runs Postgres,
-        // so that's the driver this needs to hold on.
-        if (Schema::getConnection()->getDriverName() === 'pgsql') {
+        // duplicate check in OrderController::report() (which is what
+        // actually runs on every driver, and is what gives buyers a clean
+        // 422 in the normal case — this index only fires on a genuine
+        // check-then-insert race between two concurrent requests).
+        //
+        // Postgres (production) and SQLite (the test driver, see
+        // phpunit.xml) both support this exact filtered/partial-index
+        // syntax, so both get real DB-level enforcement — which is also
+        // what lets DisputeTest actually exercise the race-condition catch
+        // in OrderController::report() against a real constraint violation
+        // rather than merely asserting the catch block exists. MySQL
+        // (local dev) has no equivalent without generated-column
+        // workarounds, which aren't worth the complexity for a local-only
+        // gap the app-level check already covers.
+        if (in_array(Schema::getConnection()->getDriverName(), ['pgsql', 'sqlite'])) {
             DB::statement(
                 "CREATE UNIQUE INDEX disputes_one_active_per_order ON disputes (order_id) WHERE status IN ('open', 'under_review')"
             );

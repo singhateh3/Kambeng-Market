@@ -480,13 +480,26 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            $dispute = Dispute::create([
-                'order_id' => $order->id,
-                'reported_by' => $request->user()->id,
-                'reason' => $request->reason,
-                'description' => $request->description,
-                'status' => 'open',
-            ]);
+            try {
+                $dispute = Dispute::create([
+                    'order_id' => $order->id,
+                    'reported_by' => $request->user()->id,
+                    'reason' => $request->reason,
+                    'description' => $request->description,
+                    'status' => 'open',
+                ]);
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                // The check above already covers the normal case — this
+                // only fires if a second request for the same order won the
+                // race between that check and this insert. The DB-level
+                // partial unique index (see the disputes migration) is what
+                // actually stops the duplicate row; this just turns that
+                // into the same clean response instead of a 500.
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order already has an active dispute.',
+                ], 422);
+            }
 
             $order->load('product.farmer', 'buyer');
 

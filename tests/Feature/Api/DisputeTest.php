@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -177,6 +178,42 @@ class DisputeTest extends TestCase
 
         $response->assertStatus(422);
         $this->assertDatabaseCount('disputes', 1);
+    }
+
+    public function test_report_endpoint_gracefully_handles_a_genuine_race_condition(): void
+    {
+        $order = $this->reportableOrder();
+        Sanctum::actingAs($order->buyer);
+
+        // Simulate a real race: a concurrent request's dispute lands via a
+        // raw insert (bypassing Eloquent, so this doesn't itself re-fire
+        // this listener) in the gap between OrderController::report()'s own
+        // pre-check finding no active dispute and its Dispute::create()
+        // call actually running — exercising the DB-level partial unique
+        // index and the try/catch around create() for real, not just
+        // asserting the catch block exists.
+        Dispute::creating(function () use ($order) {
+            DB::table('disputes')->insert([
+                'order_id' => $order->id,
+                'reported_by' => $order->buyer_id,
+                'reason' => 'other',
+                'status' => 'open',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        try {
+            $response = $this->postJson("/api/orders/{$order->id}/report", ['reason' => 'item_not_received']);
+
+            $response->assertStatus(422)
+                ->assertJsonPath('message', 'This order already has an active dispute.');
+            // Only the "concurrent" row survived — our own create() was
+            // rejected by the constraint, not silently duplicated.
+            $this->assertDatabaseCount('disputes', 1);
+        } finally {
+            Dispute::flushEventListeners();
+        }
     }
 
     public function test_new_dispute_allowed_after_prior_one_is_resolved(): void
