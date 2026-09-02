@@ -76,6 +76,19 @@ class AuthController extends Controller
     public function login(LoginUserRequest $request): JsonResponse
     {
         try {
+            // A social-only account (Google/Apple, no password ever set)
+            // safely fails Hash::check() against a null hash rather than
+            // crashing — Laravel's hasher explicitly guards that — but a
+            // specific message here is a better experience than the
+            // generic "incorrect credentials" for someone who simply
+            // hasn't set a password yet.
+            $socialOnlyUser = User::where('email', $request->email)->whereNull('password')->first();
+            if ($socialOnlyUser) {
+                throw ValidationException::withMessages([
+                    'email' => ['This account signs in with Google or Apple. Use that instead, or set a password from your profile first.'],
+                ]);
+            }
+
             // Attempt to authenticate
             if (!auth()->attempt($request->credentials(), $request->shouldRemember())) {
                 throw ValidationException::withMessages([

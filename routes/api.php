@@ -4,14 +4,17 @@
 
 use App\Http\Controllers\Admin\AdminDisputeController;
 use App\Http\Controllers\Admin\AdminOrderController;
+use App\Http\Controllers\Admin\AdminPaymentTransactionController;
 use App\Http\Controllers\Admin\AdminProductController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminFarmerVerificationController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FarmerProfileController;
+use App\Http\Controllers\Api\ModemPayWebhookController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\FarmerVerificationController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\NotificationController;
@@ -34,6 +37,8 @@ use Illuminate\Support\Facades\DB;
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:forgot-password');
+Route::post('/auth/google', [SocialAuthController::class, 'google'])->middleware('throttle:social-login');
+Route::post('/auth/apple', [SocialAuthController::class, 'apple'])->middleware('throttle:social-login');
 Route::get('/public/statistics', [PublicController::class, 'statistics']);
 
 // Public product routes (view only)
@@ -50,6 +55,9 @@ Route::get('/keep-alive', function () {
 
 // Public farmer profile routes
 Route::get('/farmers/{userId}/profile', [FarmerProfileController::class, 'publicShow']);
+
+// ModemPay webhook — public, signature-verified instead of session-authenticated
+Route::post('/webhooks/modempay', [ModemPayWebhookController::class, 'handle']);
 
 // ============================================
 // LOCAL-DEVELOPMENT-ONLY ROUTES
@@ -164,8 +172,13 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         Route::get('/', [AdminOrderController::class, 'index']);
         Route::get('/{order}', [AdminOrderController::class, 'show']);
         Route::patch('/{order}/status', [AdminOrderController::class, 'updateStatus']);
+        Route::post('/{order}/confirm-refund', [AdminOrderController::class, 'confirmRefund']);
+        Route::post('/{order}/retry-payout', [AdminOrderController::class, 'retryPayout']);
         Route::delete('/{order}', [AdminOrderController::class, 'destroy']);
     });
+
+    // Payment ledger (read-only)
+    Route::get('/payment-transactions', [AdminPaymentTransactionController::class, 'index']);
 
     // Dispute Management
     Route::prefix('disputes')->group(function () {
@@ -221,6 +234,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
         Route::post('/{order}/review', [OrderController::class, 'review']);
         Route::post('/{order}/report', [OrderController::class, 'report']);
+        Route::post('/{order}/confirm', [OrderController::class, 'confirm']);
     });
 
     // Saved Farmers (buyer only — enforced in SavedFarmerController)

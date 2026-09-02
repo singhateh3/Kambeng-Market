@@ -12,19 +12,39 @@ class FarmerProfile extends Model
 {
     use HasFactory;
 
+    // Only two mobile money networks exist on ModemPay in Gambia — confirmed
+    // directly against their docs.
+    public const SETTLEMENT_NETWORKS = ['wave', 'afrimoney'];
+
     protected $fillable = [
         'user_id',
         'farm_name',
         'farm_location',
         'bio',
         'id_verified',
+        'settlement_network',
+        'settlement_account_number',
+        'settlement_beneficiary_name',
+        'settlement_verified_at',
     ];
 
     protected $casts = [
         'id_verified' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'settlement_verified_at' => 'datetime',
     ];
+
+    /**
+     * Whether this farmer has settlement details on file to receive a
+     * payout via ModemPay's Transfer API.
+     */
+    public function hasSettlementDetails(): bool
+    {
+        return !empty($this->settlement_network)
+            && !empty($this->settlement_account_number)
+            && !empty($this->settlement_beneficiary_name);
+    }
 
     /**
      * Get the user that owns the farmer profile.

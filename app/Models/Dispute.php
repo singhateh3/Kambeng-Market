@@ -27,6 +27,10 @@ class Dispute extends Model
 
     public const ACTIVE_STATUSES = ['open', 'under_review'];
 
+    // Set only alongside status resolved/rejected — resolving a dispute
+    // must never implicitly mean a refund (see AdminDisputeController).
+    public const REFUND_DECISIONS = ['no_refund', 'full_refund', 'partial_refund'];
+
     protected $fillable = [
         'order_id',
         'reported_by',
@@ -36,10 +40,13 @@ class Dispute extends Model
         'admin_note',
         'reviewed_by',
         'reviewed_at',
+        'refund_decision',
+        'refund_amount',
     ];
 
     protected $casts = [
         'reviewed_at' => 'datetime',
+        'refund_amount' => 'decimal:2',
     ];
 
     public function order(): BelongsTo

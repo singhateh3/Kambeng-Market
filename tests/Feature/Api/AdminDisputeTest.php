@@ -95,6 +95,8 @@ class AdminDisputeTest extends TestCase
         $response = $this->patchJson("/api/admin/disputes/{$dispute->id}/status", [
             'status' => 'resolved',
             'admin_note' => 'Refund issued to buyer.',
+            'refund_decision' => 'full_refund',
+            'refund_amount' => $dispute->order->total_price,
         ]);
 
         $response->assertStatus(200)->assertJsonPath('data.status', 'resolved');
@@ -109,6 +111,8 @@ class AdminDisputeTest extends TestCase
         $this->patchJson("/api/admin/disputes/{$dispute->id}/status", [
             'status' => 'resolved',
             'admin_note' => 'Refund issued to buyer.',
+            'refund_decision' => 'full_refund',
+            'refund_amount' => $dispute->order->total_price,
         ])->assertStatus(200);
 
         $dispute->refresh();
@@ -127,6 +131,7 @@ class AdminDisputeTest extends TestCase
         $response = $this->patchJson("/api/admin/disputes/{$dispute->id}/status", [
             'status' => 'rejected',
             'admin_note' => 'No evidence of an issue.',
+            'refund_decision' => 'no_refund',
         ]);
 
         $response->assertStatus(200)->assertJsonPath('data.status', 'rejected');
@@ -198,6 +203,8 @@ class AdminDisputeTest extends TestCase
         $this->patchJson("/api/admin/disputes/{$dispute->id}/status", [
             'status' => 'resolved',
             'admin_note' => 'Refund issued.',
+            'refund_decision' => 'full_refund',
+            'refund_amount' => $dispute->order->total_price,
         ])->assertStatus(200);
 
         $this->assertDatabaseHas('notifications', [

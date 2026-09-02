@@ -60,4 +60,32 @@ class OrderPolicy
     {
         return $user->id === $order->buyer_id;
     }
+
+    /**
+     * Confirm "everything is okay" to release the farmer's payout — the
+     * buyer only.
+     */
+    public function confirm(User $user, Order $order): bool
+    {
+        return $user->id === $order->buyer_id;
+    }
+
+    /**
+     * Retry a failed farmer payout — admin only. Redundant with the
+     * 'admin' route middleware already guarding AdminOrderController,
+     * same defense-in-depth rationale as DisputePolicy::resolve().
+     */
+    public function retryPayout(User $user, Order $order): bool
+    {
+        return $user->isAdmin();
+    }
+
+    /**
+     * Confirm a refund was actually processed through ModemPay's own
+     * dashboard — admin only.
+     */
+    public function confirmRefund(User $user, Order $order): bool
+    {
+        return $user->isAdmin();
+    }
 }

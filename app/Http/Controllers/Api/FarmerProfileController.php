@@ -34,12 +34,14 @@ class FarmerProfileController extends Controller
     }
 
     /**
-     * Update the farmer profile.
+     * Update the farmer profile. Scoped to $request->user()->farmerProfile
+     * only — there is no id in the route, so a farmer can never target
+     * anyone else's profile/settlement details.
      */
     public function update(UpdateFarmerProfileRequest $request): JsonResponse
     {
         $profile = $request->user()->farmerProfile;
-        
+
         if (!$profile) {
             return response()->json([
                 'message' => 'Farmer profile not found',
@@ -47,6 +49,17 @@ class FarmerProfileController extends Controller
         }
 
         $validated = $request->validated();
+
+        // Self-attestation timestamp — ModemPay does no recipient-side
+        // verification of its own, so this only records "the farmer
+        // confirmed this is their payout destination on this date," not
+        // any external verification. Only stamped when settlement details
+        // are actually part of this request (all three, per the request's
+        // required_with rules), not on every unrelated profile edit.
+        if ($request->filled('settlement_network')) {
+            $validated['settlement_verified_at'] = now();
+        }
+
         $profile->update($validated);
 
         return response()->json([

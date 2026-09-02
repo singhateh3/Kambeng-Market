@@ -7,11 +7,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Dispute;
 use App\Models\Order;
+use App\Models\PaymentTransaction;
 use App\Models\Product;
 use App\Models\Review;
+use App\Services\ModemPayClient;
 use App\Services\NotificationService;
+use App\Services\PayoutReleaseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class OrderController extends Controller
 {
@@ -67,7 +72,12 @@ class OrderController extends Controller
     }
 
     /**
-     * Store a new order
+     * Start a new order. ModemPay is the only payment method — nothing
+     * here accepts a client-supplied payment_method, unlike the old COD
+     * flow. The order is created in 'awaiting_payment' and is not real /
+     * farmer-visible (no orderPlaced() notification, doesn't appear in the
+     * farmer's order list) until a verified successful ModemPay webhook
+     * moves it to 'pending' — see ModemPayWebhookController.
      */
     public function store(Request $request): JsonResponse
     {
@@ -80,18 +90,10 @@ class OrderController extends Controller
                 'pickup_date' => 'nullable|date|after_or_equal:today',
                 'delivery_address' => 'required_if:delivery_method,farmer_delivery|nullable|string|max:500',
                 'special_instructions' => 'nullable|string|max:500',
-                // COD is the only accepted method today. Nullable + a
-                // server-side default below rather than 'required' so an
-                // existing client that never sends this field still works
-                // — the field isn't trusted from the client either way,
-                // it's validated against the same fixed allow-list the
-                // column itself enforces.
-                'payment_method' => 'nullable|string|in:cod',
             ]);
 
             $product = Product::findOrFail($request->product_id);
 
-            // Check if product is available
             if (!$product->isAvailable()) {
                 return response()->json([
                     'success' => false,
@@ -99,7 +101,6 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            // Check if the product belongs to a farmer
             if (!$product->farmer) {
                 return response()->json([
                     'success' => false,
@@ -116,17 +117,12 @@ class OrderController extends Controller
                 'total_price' => $totalPrice,
                 'delivery_method' => $request->delivery_method,
                 'special_instructions' => $request->special_instructions,
-                'status' => 'pending',
+                'status' => 'awaiting_payment',
                 'order_date' => now(),
-                // Explicit rather than relying on the column default, so
-                // it's clear at the call site that a COD order is never
-                // created as anything but pending — placing an order is
-                // not a payment event.
-                'payment_method' => $request->payment_method ?? 'cod',
+                'payment_method' => 'modempay',
                 'payment_status' => 'pending',
             ];
 
-            // Set the appropriate date (and address) based on delivery method
             if ($request->delivery_method === 'pickup') {
                 $orderData['pickup_date'] = $request->pickup_date;
                 $orderData['delivery_deadline'] = null;
@@ -137,24 +133,79 @@ class OrderController extends Controller
                 $orderData['delivery_address'] = $request->delivery_address;
             }
 
-            $order = Order::create($orderData);
+            // Order creation and payment-intent creation succeed or fail
+            // together — a checkout that never got a payment_link is not
+            // left behind as an orphaned awaiting_payment order.
+            $order = DB::transaction(function () use ($orderData, $totalPrice) {
+                $order = new Order($orderData);
+                $order->applyCommissionSnapshot();
+                $order->save();
 
-            // Load relationships for response
-            $order->load(['buyer', 'product', 'product.farmer']);
+                $frontendUrl = rtrim(config('app.frontend_url', config('app.url')), '/');
+                $returnUrl = "{$frontendUrl}/app/orders/{$order->id}/payment-return?status=success";
+                $cancelUrl = "{$frontendUrl}/app/orders/{$order->id}/payment-return?status=cancelled";
 
-            // Send notification to farmer AND admins
-            try {
-                $notificationService = app(NotificationService::class);
-                $notificationService->orderPlaced($order->product->farmer, $order);
-            } catch (\Exception $e) {
-                \Log::error('Error sending order placed notification: ' . $e->getMessage());
-                // Don't fail the order if notification fails
-            }
+                $modemPay = app(ModemPayClient::class);
+                $response = $modemPay->createPaymentIntent([
+                    'amount' => (string) $totalPrice,
+                    'currency' => 'GMD',
+                    'title' => "Kambeng Market order #{$order->id}",
+                    'return_url' => $returnUrl,
+                    'cancel_url' => $cancelUrl,
+                    'metadata' => ['order_id' => $order->id],
+                ]);
+
+                // payment_intent_id and intent_secret are two DIFFERENT,
+                // both-required identifiers — confirmed live (Task 11).
+                // payment_intent_id is the stable UUID used for general
+                // correlation (webhooks, the ledger, reconciliation);
+                // intent_secret is a separate token required specifically
+                // by ModemPayClient::verifyPaymentIntent() and nowhere
+                // else. Storing only one, as the original implementation
+                // did, silently broke whichever use needed the other.
+                $paymentIntentId = $response['data']['payment_intent_id'] ?? null;
+                $intentSecret = $response['data']['intent_secret'] ?? null;
+                $paymentLink = $response['data']['payment_link'] ?? null;
+
+                if (!$paymentIntentId || !$intentSecret || !$paymentLink) {
+                    throw new \RuntimeException('ModemPay did not return the expected payment intent fields.');
+                }
+
+                $order->update([
+                    'modempay_intent_id' => $paymentIntentId,
+                    'modempay_intent_secret' => $intentSecret,
+                ]);
+
+                // Idempotency-Key was confirmed required for ModemPay's
+                // Transfer API but not confirmed either way for Payment
+                // Intent creation — not sent here since it isn't
+                // documented for this endpoint, but this ledger row is
+                // still written for our own audit trail regardless.
+                PaymentTransaction::create([
+                    'order_id' => $order->id,
+                    'type' => 'charge',
+                    'amount' => $totalPrice,
+                    'currency' => 'GMD',
+                    'commission_amount' => $order->commission_amount,
+                    'status' => 'pending',
+                    'modempay_reference' => $paymentIntentId,
+                    'idempotency_key' => (string) Str::uuid(),
+                    'metadata' => ['payment_link' => $paymentLink],
+                ]);
+
+                $order->payment_link = $paymentLink;
+
+                return $order;
+            });
 
             return response()->json([
                 'success' => true,
-                'message' => 'Order placed successfully',
-                'data' => $order,
+                'message' => 'Checkout started',
+                'data' => [
+                    'order_id' => $order->id,
+                    'payment_link' => $order->payment_link,
+                    'status' => $order->status,
+                ],
             ], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
@@ -242,6 +293,21 @@ class OrderController extends Controller
             if ($derivedPaymentStatus = $order->derivedPaymentStatus($newStatus)) {
                 $updates['payment_status'] = $derivedPaymentStatus;
             }
+
+            if ($newStatus === 'delivered') {
+                $updates['delivered_at'] = now();
+                // Starts the 3-day buyer-protection clock. COD orders
+                // (grandfathered, pre-cutover) have no payout mechanism at
+                // all — stay 'not_applicable' permanently.
+                if ($order->payment_method === 'modempay') {
+                    $updates['payout_status'] = 'pending_release';
+                }
+            }
+
+            if ($newStatus === 'cancelled' && $order->payment_method === 'modempay' && $order->payment_status === 'paid') {
+                PaymentTransaction::recordPendingRefund($order, (float) $order->total_price, 'refund', 'Order cancelled by farmer/admin after payment succeeded');
+            }
+
             $order->update($updates);
 
             // If order is delivered, update product status to sold
@@ -314,18 +380,29 @@ class OrderController extends Controller
                 ], 403);
             }
 
-            // Only allow cancellation for pending or confirmed orders
+            // Pre-shipment cancellation stays self-service (pending/
+            // confirmed only) — from 'shipped' onward the buyer must use
+            // the dispute process instead.
             if (!in_array($order->status, ['pending', 'confirmed'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'This order cannot be cancelled',
+                    'message' => 'This order cannot be cancelled. Please use the dispute process for shipped or delivered orders.',
                 ], 422);
             }
 
-            $order->update([
+            $newPaymentStatus = $order->derivedPaymentStatus('cancelled');
+            $order->update(array_filter([
                 'status' => 'cancelled',
-                'payment_status' => $order->derivedPaymentStatus('cancelled'),
-            ]);
+                'payment_status' => $newPaymentStatus,
+            ], fn ($v) => $v !== null));
+
+            // A modempay order that already collected payment needs an
+            // actual refund, not a relabel — derivedPaymentStatus()
+            // deliberately returns null for this case so it isn't silently
+            // mislabeled here.
+            if ($order->payment_method === 'modempay' && $order->payment_status === 'paid') {
+                PaymentTransaction::recordPendingRefund($order, (float) $order->total_price, 'refund', 'Buyer self-cancelled before shipment');
+            }
 
             // Send cancellation notifications
             try {
@@ -510,6 +587,71 @@ class OrderController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error reporting order: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Buyer confirms "everything is okay" — releases the farmer's payout.
+     * Blocked while any dispute is active on the order, regardless of who
+     * filed it. If nobody confirms, AutoReleaseFarmerPayouts releases it
+     * automatically 3 days after delivery anyway (see PayoutReleaseService).
+     */
+    public function confirm(Request $request, Order $order): JsonResponse
+    {
+        try {
+            if ($request->user()->cannot('confirm', $order)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only the buyer can confirm this order',
+                ], 403);
+            }
+
+            if ($order->status !== 'delivered') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only delivered orders can be confirmed',
+                ], 422);
+            }
+
+            if ($order->hasActiveDispute()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order has an active dispute and cannot be confirmed until it is resolved',
+                ], 422);
+            }
+
+            if ($order->payout_status !== 'pending_release') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order has already been confirmed or is not eligible for confirmation',
+                ], 422);
+            }
+
+            // Server-controlled, set only here — never from any request input.
+            $order->update(['buyer_confirmed_at' => now()]);
+
+            $result = app(PayoutReleaseService::class)->release($order, 'buyer_confirmed');
+
+            if (!$result['success']) {
+                \Log::warning("Buyer confirm on order {$order->id} could not release payout: {$result['reason']}");
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Order confirmed. Farmer payout could not be released automatically and will be reviewed by an admin.',
+                    'data' => $order->fresh(),
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Order confirmed and farmer payout released',
+                'data' => $order->fresh(),
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error confirming order: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error confirming order: ' . $e->getMessage(),
             ], 500);
         }
     }

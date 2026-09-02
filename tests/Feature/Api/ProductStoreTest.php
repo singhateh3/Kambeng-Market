@@ -25,6 +25,15 @@ class ProductStoreTest extends TestCase
         ], $overrides);
     }
 
+    public function test_guest_cannot_create_a_product(): void
+    {
+        // Task 12 gap-filler — auth:sanctum already enforces this; this
+        // locks in the regression, matching the existing guest-401
+        // coverage pattern used for other write endpoints (e.g.
+        // ProductUpdateTest::test_unauthenticated_user_cannot_update_product).
+        $this->postJson('/api/products', $this->validPayload())->assertStatus(401);
+    }
+
     public function test_description_is_persisted_and_returned_on_create(): void
     {
         $farmer = User::factory()->create(['role' => 'farmer']);

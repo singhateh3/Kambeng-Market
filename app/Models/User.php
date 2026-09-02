@@ -22,6 +22,8 @@ class User extends Authenticatable
         'verification_requested_at',
         'verification_status',
         'password',
+        'provider',
+        'provider_id',
     ];
 
     protected $hidden = [

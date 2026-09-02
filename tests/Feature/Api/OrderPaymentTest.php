@@ -7,14 +7,17 @@ use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
- * Covers Task 6 — Cash on Delivery formalized as payment_method/payment_status
- * on orders. payment_status is never independently settable by any request
- * field; it only ever changes as a side effect of an order-status transition
- * the caller was already authorized to make (see Order::derivedPaymentStatus()).
+ * Covers Task 6 (Cash on Delivery, now grandfathered/historical-only — see
+ * OrderController::store()) and the ModemPay-only commission architecture
+ * that replaced it. payment_status is never independently settable by any
+ * request field; it only ever changes as a side effect of an order-status
+ * transition the caller was already authorized to make, or a verified
+ * ModemPay webhook (see Order::derivedPaymentStatus()).
  */
 class OrderPaymentTest extends TestCase
 {
@@ -38,47 +41,56 @@ class OrderPaymentTest extends TestCase
         ], $overrides);
     }
 
-    public function test_new_order_defaults_to_cod_and_pending_payment(): void
+    private function fakeModemPayCheckout(): void
     {
+        Http::fake([
+            '*/v1/payments' => Http::response([
+                'status' => true,
+                'data' => [
+                    'payment_intent_id' => 'pi_' . uniqid(),
+                    'intent_secret' => 'int_' . uniqid(),
+                    'payment_link' => 'https://pay.modempay.com/checkout/int_' . uniqid(),
+                    'amount' => '1000',
+                    'currency' => 'GMD',
+                    'status' => 'requires_payment_method',
+                ],
+            ], 201),
+        ]);
+    }
+
+    public function test_new_order_defaults_to_modempay_and_awaiting_payment(): void
+    {
+        $this->fakeModemPayCheckout();
         [$buyer, $product] = $this->buyerAndProduct();
         Sanctum::actingAs($buyer);
 
         $response = $this->postJson('/api/orders', $this->orderPayload($product));
 
-        $response->assertStatus(201)
-            ->assertJsonPath('data.payment_method', 'cod')
-            ->assertJsonPath('data.payment_status', 'pending');
+        $response->assertStatus(201)->assertJsonPath('data.status', 'awaiting_payment');
 
         $this->assertDatabaseHas('orders', [
             'product_id' => $product->id,
-            'payment_method' => 'cod',
+            'payment_method' => 'modempay',
             'payment_status' => 'pending',
+            'status' => 'awaiting_payment',
         ]);
     }
 
-    public function test_explicit_cod_payment_method_is_accepted(): void
+    public function test_client_supplied_payment_method_is_ignored(): void
     {
+        $this->fakeModemPayCheckout();
         [$buyer, $product] = $this->buyerAndProduct();
         Sanctum::actingAs($buyer);
 
+        // No cash/COD option for new orders — even if a client tries to
+        // smuggle a different payment_method in, it has no effect.
         $response = $this->postJson('/api/orders', $this->orderPayload($product, ['payment_method' => 'cod']));
 
-        $response->assertStatus(201)
-            ->assertJsonPath('data.payment_method', 'cod')
-            ->assertJsonPath('data.payment_status', 'pending');
-    }
-
-    public function test_invalid_payment_method_is_rejected(): void
-    {
-        [$buyer, $product] = $this->buyerAndProduct();
-        Sanctum::actingAs($buyer);
-
-        $response = $this->postJson('/api/orders', $this->orderPayload($product, ['payment_method' => 'wave']));
-
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['payment_method']);
-
-        $this->assertDatabaseCount('orders', 0);
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('orders', [
+            'product_id' => $product->id,
+            'payment_method' => 'modempay',
+        ]);
     }
 
     public function test_existing_orders_survive_migration_with_cod_pending_default(): void
@@ -114,6 +126,7 @@ class OrderPaymentTest extends TestCase
 
     public function test_buyer_cannot_set_payment_status_on_order_creation(): void
     {
+        $this->fakeModemPayCheckout();
         [$buyer, $product] = $this->buyerAndProduct();
         Sanctum::actingAs($buyer);
 

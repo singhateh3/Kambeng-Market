@@ -75,5 +75,15 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perHour(10)->by($request->ip()),
             ];
         });
+
+        // POST /auth/google, /auth/apple — no email field to key on (the
+        // identity comes from a provider token, not user input), so this
+        // is IP-only. Deliberately NOT reusing 'login' — its email-keyed
+        // limit would key on an empty string for every social-login
+        // request, lumping all users' attempts into one shared 5/minute
+        // global bucket instead of limiting per source.
+        RateLimiter::for('social-login', function (Request $request) {
+            return Limit::perMinute(10)->by($request->ip());
+        });
     }
 }

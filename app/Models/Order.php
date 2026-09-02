@@ -24,14 +24,33 @@ class Order extends Model
         'order_date',
         'payment_method',
         'payment_status',
+        'payout_status',
+        'payout_release_reason',
+        'commission_rate',
+        'commission_amount',
+        'farmer_net_amount',
+        'modempay_intent_id',
+        'modempay_intent_secret',
+        'modempay_transfer_id',
+        'payment_confirmed_at',
+        'delivered_at',
+        'buyer_confirmed_at',
+        'payout_released_at',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:2',
         'total_price' => 'decimal:2',
+        'commission_rate' => 'decimal:4',
+        'commission_amount' => 'decimal:2',
+        'farmer_net_amount' => 'decimal:2',
         'order_date' => 'datetime',
         'delivery_deadline' => 'date',
         'pickup_date' => 'date',
+        'payment_confirmed_at' => 'datetime',
+        'delivered_at' => 'datetime',
+        'buyer_confirmed_at' => 'datetime',
+        'payout_released_at' => 'datetime',
     ];
 
     /**
@@ -82,14 +101,32 @@ class Order extends Model
     }
 
     /**
+     * The full financial ledger for this order. Append-only — see
+     * PaymentTransaction.
+     */
+    public function paymentTransactions()
+    {
+        return $this->hasMany(PaymentTransaction::class);
+    }
+
+    /**
      * The only status changes allowed from a given current status. Shared
      * by OrderController and AdminOrderController — previously only the
      * farmer-facing controller enforced this, so an admin call could jump
      * an order straight from 'pending' to 'delivered' in one request,
      * silently triggering the COD-auto-paid derivation below without the
      * order ever passing through 'confirmed'/'shipped'.
+     *
+     * 'awaiting_payment' is a new leading state: an order isn't real or
+     * farmer-visible until a verified successful ModemPay webhook moves it
+     * to 'pending' (see OrderController::store()/ModemPayWebhookController).
+     * A checkout that fails or expires moves straight to 'cancelled' —
+     * deliberately NOT a distinct order-level status; payment_status
+     * records why (failed/expired), keeping order status and payment
+     * status strictly separate state machines.
      */
     public const VALID_STATUS_TRANSITIONS = [
+        'awaiting_payment' => ['pending', 'cancelled'],
         'pending' => ['confirmed', 'cancelled'],
         'confirmed' => ['shipped', 'cancelled'],
         'shipped' => ['delivered', 'cancelled'],
@@ -108,6 +145,12 @@ class Order extends Model
      * payment_status exactly as it is (confirmed/shipped don't touch it).
      * Shared by OrderController and AdminOrderController so both apply the
      * same COD-at-delivery rule instead of duplicating it.
+     *
+     * Deliberately returns null (does nothing) for a cancelled ModemPay
+     * order whose payment already succeeded — real money was collected, so
+     * that case needs an actual refund, not a relabel to 'cancelled'. The
+     * caller (OrderController::cancel(), or the dispute refund flow) must
+     * handle that explicitly rather than have it silently derived here.
      */
     public function derivedPaymentStatus(string $newOrderStatus): ?string
     {
@@ -116,10 +159,49 @@ class Order extends Model
         }
 
         if ($newOrderStatus === 'cancelled') {
-            return 'cancelled';
+            if ($this->payment_method === 'cod' || $this->payment_status !== 'paid') {
+                return 'cancelled';
+            }
+            return null;
         }
 
         return null;
+    }
+
+    /**
+     * Snapshot commission fields from the current config rate. Called only
+     * at order creation — never again, so historical orders are unaffected
+     * by a later rate change.
+     */
+    public function applyCommissionSnapshot(): void
+    {
+        $rate = (float) config('commission.rate');
+        $this->commission_rate = $rate;
+        $this->commission_amount = round($this->total_price * $rate, 2);
+        $this->farmer_net_amount = round($this->total_price - $this->commission_amount, 2);
+    }
+
+    /**
+     * Whether this order currently has a dispute that isn't yet resolved —
+     * blocks both buyer confirmation and payout release (auto or manual),
+     * regardless of which party filed it.
+     */
+    public function hasActiveDispute(): bool
+    {
+        return $this->dispute()->whereIn('status', Dispute::ACTIVE_STATUSES)->exists();
+    }
+
+    /**
+     * Whether the farmer's payout can be released right now — delivered,
+     * still awaiting release, no active dispute. Shared by the buyer
+     * confirm endpoint, the auto-release scheduled job, and the
+     * dispute-rejected-past-window immediate-release path.
+     */
+    public function isPayoutEligibleForRelease(): bool
+    {
+        return $this->status === 'delivered'
+            && $this->payout_status === 'pending_release'
+            && !$this->hasActiveDispute();
     }
 
     /**
@@ -152,6 +234,7 @@ class Order extends Model
     public function getStatusLabelAttribute(): string
     {
         return match ($this->status) {
+            'awaiting_payment' => 'Awaiting Payment',
             'pending' => 'Pending',
             'confirmed' => 'Confirmed',
             'shipped' => 'Shipped',
@@ -167,6 +250,7 @@ class Order extends Model
     public function getStatusColorAttribute(): string
     {
         return match ($this->status) {
+            'awaiting_payment' => 'gray',
             'pending' => 'yellow',
             'confirmed' => 'blue',
             'shipped' => 'purple',

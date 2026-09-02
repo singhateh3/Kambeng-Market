@@ -22,7 +22,18 @@ class FarmerProfileResource extends JsonResource
             'verification_status' => $this->verification_status_label,
             'verification_status_color' => $this->verification_status_color,
             'created_at' => $this->created_at?->toISOString(),
-            
+
+            // This resource is only ever returned to the farmer viewing/
+            // editing their OWN profile (FarmerProfileController::show()/
+            // update()) — confirmed the only two callers in the codebase.
+            // Never expose these via PublicFarmerProfileResource, UserResource,
+            // or anywhere a buyer/other farmer could see them.
+            'settlement_network' => $this->settlement_network,
+            'settlement_account_number' => $this->settlement_account_number,
+            'settlement_beneficiary_name' => $this->settlement_beneficiary_name,
+            'settlement_verified_at' => $this->settlement_verified_at?->toISOString(),
+
+
             // Relationships
             'user' => $this->whenLoaded('user', function () {
                 return new UserResource($this->user);

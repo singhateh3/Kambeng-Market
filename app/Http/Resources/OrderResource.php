@@ -20,6 +20,18 @@ class OrderResource extends JsonResource
             'payment_method' => $this->payment_method,
             'payment_status' => $this->payment_status,
             'payment_status_label' => $this->getPaymentStatusLabel(),
+            'payout_status' => $this->payout_status,
+            'payout_status_label' => $this->getPayoutStatusLabel(),
+            'payout_release_reason' => $this->payout_release_reason,
+            'payout_released_at' => $this->payout_released_at?->toISOString(),
+            'delivered_at' => $this->delivered_at?->toISOString(),
+            'commission_amount' => $this->when($this->commission_amount !== null, fn () => (float) $this->commission_amount),
+            'farmer_net_amount' => $this->when($this->farmer_net_amount !== null, fn () => (float) $this->farmer_net_amount),
+            // Explicit, unmistakable signal for admin dispute review — a
+            // dispute can be filed on a delivered order whose payout has
+            // already gone out, and nothing should imply money is still
+            // held back in that case.
+            'funds_held_for_payout' => $this->payout_status === 'pending_release',
             'special_instructions' => $this->special_instructions,
             'delivery_method' => $this->delivery_method,
             'delivery_method_label' => $this->getDeliveryMethodLabel(),
@@ -71,11 +83,27 @@ class OrderResource extends JsonResource
     {
         return match ($this->payment_status) {
             'pending' => 'Payment pending',
+            'processing' => 'Payment processing',
             'paid' => 'Paid',
             'failed' => 'Payment failed',
+            'expired' => 'Checkout expired',
             'cancelled' => 'Payment cancelled',
             'refunded' => 'Refunded',
+            'partially_refunded' => 'Partially refunded',
             default => ucfirst($this->payment_status ?? 'pending'),
+        };
+    }
+
+    protected function getPayoutStatusLabel(): string
+    {
+        return match ($this->payout_status) {
+            'not_applicable' => 'Not applicable',
+            'pending_release' => 'Held — pending buyer confirmation',
+            'released' => 'Payout in progress',
+            'paid' => 'Paid to farmer',
+            'failed' => 'Payout failed',
+            'voided' => 'Voided (refunded)',
+            default => ucfirst(str_replace('_', ' ', $this->payout_status ?? 'not_applicable')),
         };
     }
 
