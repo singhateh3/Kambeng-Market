@@ -56,6 +56,11 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // The React app's origin — used to build ModemPay return_url/cancel_url
+    // links (OrderController::store) so buyers land back on the frontend,
+    // not this API host.
+    'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost')),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
