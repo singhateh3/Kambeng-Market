@@ -29,6 +29,14 @@ services:
         value: require
       - key: CLOUDINARY_URL
         sync: false
+      - key: MODEMPAY_SECRET_KEY
+        sync: false
+      - key: MODEMPAY_WEBHOOK_SECRET
+        sync: false
+      - key: MODEMPAY_MERCHANT_ID
+        sync: false
+      - key: MODEMPAY_PUBLIC_KEY
+        sync: false
       - key: FRONTEND_URL
         value: https://kambeng-market-frontend.vercel.app
       - key: CACHE_STORE
