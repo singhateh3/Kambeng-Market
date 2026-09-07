@@ -47,3 +47,76 @@ services:
         value: database
       - key: SANCTUM_TOKEN_EXPIRATION
         value: 43200
+
+  # Drives Laravel's own scheduler (routes/console.php) in production —
+  # the web service's container only runs php-fpm/nginx under supervisord
+  # (see docker-entrypoint.sh), nothing there ever calls `schedule:run`.
+  # `php artisan schedule:run` itself decides which of the scheduled
+  # commands (orders:reconcile-modempay, orders:expire-awaiting-payment,
+  # orders:auto-release-payouts, ...) are actually due each minute; this
+  # service does not target any command directly, so a new one added to
+  # routes/console.php needs no matching change here.
+  #
+  # A Render Cron Job's dockerCommand replaces the image's default CMD
+  # entirely (docker-entrypoint.sh, with its config:cache/migrate/
+  # supervisord boot, never runs for this service) — so this service
+  # needs its own copy of every env var Laravel's config reads, not just
+  # the subset the scheduled commands touch directly. Render does not
+  # share a web service's environment with a cron service automatically,
+  # and env var groups can't hold sync:false placeholders (Render ignores
+  # those), so — same as the api service above — only variable NAMES are
+  # declared here; every sync:false value must be set on this service
+  # from the Render dashboard, independently of the api service's.
+  #
+  # Same GitHub-backed Docker build as kambeng-market-api (confirmed live
+  # in the Render dashboard: no pre-built image, Dockerfile at repo root)
+  # — repo/branch are left unset so Render defaults them to this Blueprint
+  # file's own repo/branch, exactly matching the web service.
+  - type: cron
+    name: kambeng-market-scheduler
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    schedule: "* * * * *"
+    dockerCommand: php artisan schedule:run
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_KEY
+        sync: false
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_DATABASE
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSLMODE
+        value: require
+      - key: CLOUDINARY_URL
+        sync: false
+      - key: MODEMPAY_SECRET_KEY
+        sync: false
+      - key: MODEMPAY_WEBHOOK_SECRET
+        sync: false
+      - key: MODEMPAY_MERCHANT_ID
+        sync: false
+      - key: MODEMPAY_PUBLIC_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: https://kambeng-market-frontend.vercel.app
+      - key: CACHE_STORE
+        value: database
+      - key: SESSION_DRIVER
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: SANCTUM_TOKEN_EXPIRATION
+        value: 43200
