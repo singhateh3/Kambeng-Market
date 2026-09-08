@@ -179,15 +179,36 @@ class AuthController extends Controller
                 }
             }
 
+            // A role change only ever arrives here from the post-Google-
+            // sign-in profile completion step (CompleteProfile.jsx) — Google
+            // always creates buyers (see SocialAuthService), so this lets
+            // one who's actually a farmer say so. Restricted to buyer ->
+            // farmer only, mirroring what AuthController::register() already
+            // lets anyone choose freely at signup; no other transition
+            // (farmer -> buyer, anything -> admin) is accepted through this
+            // endpoint — that stays AdminUserController::updateRole's job.
+            if (array_key_exists('role', $validated) && $validated['role'] !== $user->role) {
+                if ($user->role !== 'buyer' || $validated['role'] !== 'farmer') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This account cannot change role this way.',
+                    ], 422);
+                }
+            }
+
             // Update user data
             $user->update($validated);
 
-            // Update farmer profile if exists
-            if ($user->isFarmer() && ($request->has('farm_name') || $request->has('farm_location') || $request->has('bio'))) {
-                $user->farmerProfile()->update([
-                    'farm_name' => $validated['farm_name'] ?? $user->farmerProfile->farm_name,
-                    'farm_location' => $validated['farm_location'] ?? $user->farmerProfile->farm_location,
-                    'bio' => $validated['bio'] ?? $user->farmerProfile->bio,
+            // Create/update the farmer profile. Covers both an existing
+            // farmer editing their farm details AND a buyer who just became
+            // a farmer above — the latter has no farmer_profiles row yet, so
+            // a plain ->update() (the old behavior) would silently affect
+            // zero rows and leave the account farmer-flagged but profile-less.
+            if ($user->isFarmer() && ($request->has('farm_name') || $request->has('farm_location') || $request->has('bio') || $request->has('role'))) {
+                $user->farmerProfile()->updateOrCreate([], [
+                    'farm_name' => $validated['farm_name'] ?? optional($user->farmerProfile)->farm_name,
+                    'farm_location' => $validated['farm_location'] ?? optional($user->farmerProfile)->farm_location,
+                    'bio' => $validated['bio'] ?? optional($user->farmerProfile)->bio,
                 ]);
             }
 

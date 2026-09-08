@@ -14,16 +14,24 @@ class UpdateProfileRequest extends FormRequest
 
     public function rules(): array
     {
-        $userId = $this->user()->id;
-
         return [
             'name' => 'sometimes|string|max:255',
             'phone' => 'sometimes|string|max:20',
             'location' => 'sometimes|string|max:255',
             'avatar' => 'nullable|image|max:5120', // 5MB
             'bio' => 'nullable|string|max:500',
-            'farm_name' => 'sometimes|string|max:255',
-            'farm_location' => 'sometimes|string|max:255',
+            // required_if fires only when this same request also carries
+            // `role=farmer` — see CompleteProfile.jsx (frontend), the only
+            // caller that ever sends `role`. An existing farmer editing just
+            // their bio via the normal Profile page never sends `role`, so
+            // this stays optional for them exactly as before. Mirrors
+            // RegisterUserRequest's identical required_if for the same pair.
+            'farm_name' => 'nullable|required_if:role,farmer|string|max:255',
+            'farm_location' => 'nullable|required_if:role,farmer|string|max:255',
+            // Self-service role changes are restricted to buyer -> farmer —
+            // enforced in AuthController::updateProfile(), not here; see the
+            // comment there for why.
+            'role' => ['sometimes', Rule::in(['buyer', 'farmer'])],
             'current_password' => 'required_with:new_password|string|current_password',
             'new_password' => 'nullable|string|min:8|confirmed',
         ];
@@ -34,6 +42,8 @@ class UpdateProfileRequest extends FormRequest
         return [
             'avatar.image' => 'Avatar must be an image file',
             'avatar.max' => 'Avatar must be less than 5MB',
+            'farm_name.required_if' => 'Farm name is required for farmers',
+            'farm_location.required_if' => 'Farm location is required for farmers',
             'current_password.required_with' => 'Current password is required to change password',
             'current_password.current_password' => 'Current password is incorrect',
             'new_password.min' => 'New password must be at least 8 characters',
