@@ -18,7 +18,14 @@ class UpdateProfileRequest extends FormRequest
             'name' => 'sometimes|string|max:255',
             'phone' => 'sometimes|string|max:20',
             'location' => 'sometimes|string|max:255',
-            'avatar' => 'nullable|image|max:5120', // 5MB
+            // gif/bmp/svg are valid per Laravel's `image` rule but not per
+            // the product spec (JPEG/PNG/WebP only) — `mimes` narrows it.
+            'avatar' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120', // 5MB
+            // Explicit removal — same shape as UpdateProductRequest's
+            // `remove_photos`. Ignored when a new `avatar` file is present
+            // in the same request (AuthController::updateProfile treats a
+            // new upload as taking priority).
+            'remove_avatar' => 'nullable|boolean',
             'bio' => 'nullable|string|max:500',
             // required_if fires only when this same request also carries
             // `role=farmer` — see CompleteProfile.jsx (frontend), the only
@@ -41,6 +48,7 @@ class UpdateProfileRequest extends FormRequest
     {
         return [
             'avatar.image' => 'Avatar must be an image file',
+            'avatar.mimes' => 'Avatar must be a JPEG, PNG, or WebP image',
             'avatar.max' => 'Avatar must be less than 5MB',
             'farm_name.required_if' => 'Farm name is required for farmers',
             'farm_location.required_if' => 'Farm location is required for farmers',

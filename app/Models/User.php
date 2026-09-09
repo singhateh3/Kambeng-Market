@@ -18,6 +18,7 @@ class User extends Authenticatable
         'location',
         'role',
         'avatar',
+        'avatar_public_id',
         'verified_at',
         'verification_requested_at',
         'verification_status',
@@ -155,12 +156,26 @@ class User extends Authenticatable
     }
 
     // Accessors
+
+    /**
+     * `avatar` holds either a legacy local-disk relative path (pre-
+     * Cloudinary uploads, or any upload made while Cloudinary isn't
+     * configured — see CloudinaryService::isConfigured()) or a Cloudinary
+     * secure_url. UserResource and PublicFarmerProfileResource both read
+     * this instead of building the URL themselves, so there's exactly one
+     * place that knows how to tell the two apart.
+     */
     public function getAvatarUrlAttribute(): ?string
     {
-        if ($this->avatar) {
-            return asset('storage/' . $this->avatar);
+        if (!$this->avatar) {
+            return null;
         }
-        return null;
+
+        if (str_starts_with($this->avatar, 'http://') || str_starts_with($this->avatar, 'https://')) {
+            return $this->avatar;
+        }
+
+        return asset('storage/' . $this->avatar);
     }
 
     public function getVerificationStatusLabelAttribute(): string

@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\RegisterUserRequest;
 use App\Http\Requests\Auth\UpdateProfileRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\CloudinaryService;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -162,21 +163,31 @@ class AuthController extends Controller
     /**
      * Update user profile
      */
-    public function updateProfile(UpdateProfileRequest $request): JsonResponse
+    public function updateProfile(UpdateProfileRequest $request, CloudinaryService $cloudinaryService): JsonResponse
     {
         try {
             $user = $request->user();
             $validated = $request->validated();
+            unset($validated['remove_avatar']); // control flag, not a users column
 
-            // Handle avatar upload
             if ($request->hasFile('avatar')) {
-                $avatarPath = $request->file('avatar')->store('avatars', 'public');
-                $validated['avatar'] = $avatarPath;
-
-                // Delete old avatar if exists
-                if ($user->avatar) {
-                    Storage::disk('public')->delete($user->avatar);
+                try {
+                    $new = $this->storeAvatar($request->file('avatar'), $cloudinaryService);
+                } catch (\Exception $e) {
+                    \Log::error('Avatar upload failed: ' . $e->getMessage());
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Could not upload your photo right now. Please try again.',
+                    ], 502);
                 }
+
+                $this->deleteAvatar($user->avatar, $user->avatar_public_id, $cloudinaryService);
+                $validated['avatar'] = $new['secure_url'];
+                $validated['avatar_public_id'] = $new['public_id'];
+            } elseif ($request->boolean('remove_avatar')) {
+                $this->deleteAvatar($user->avatar, $user->avatar_public_id, $cloudinaryService);
+                $validated['avatar'] = null;
+                $validated['avatar_public_id'] = null;
             }
 
             // A role change only ever arrives here from the post-Google-
@@ -229,6 +240,51 @@ class AuthController extends Controller
                 'success' => false,
                 'message' => 'Error updating profile: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * @return array{secure_url: string, public_id: ?string}
+     *
+     * @throws \Exception on a Cloudinary upload failure — callers must
+     *         catch this; never let it surface as a raw 500 with an
+     *         internal exception message.
+     */
+    private function storeAvatar($file, CloudinaryService $cloudinaryService): array
+    {
+        if ($cloudinaryService->isConfigured()) {
+            return $cloudinaryService->upload($file, 'avatars');
+        }
+
+        // Same local-disk fallback updateProfile() always used before
+        // Cloudinary was wired up here — keeps this endpoint working
+        // wherever CLOUDINARY_URL isn't set (local dev, CI; see
+        // phpunit.xml). public_id stays null: nothing to delete from
+        // Cloudinary for an avatar that was never uploaded there.
+        return [
+            'secure_url' => $file->store('avatars', 'public'),
+            'public_id' => null,
+        ];
+    }
+
+    /**
+     * Delete a previous avatar, however it was stored. A Cloudinary
+     * public_id takes priority when present; otherwise, only a legacy
+     * local-disk relative path (never a bare URL with no public_id — see
+     * the migration for why one might exist without the other) is removed
+     * from the public disk. Failures are logged, never thrown — losing
+     * track of one old asset must not block saving the new avatar.
+     */
+    private function deleteAvatar(?string $avatar, ?string $avatarPublicId, CloudinaryService $cloudinaryService): void
+    {
+        if ($avatarPublicId) {
+            try {
+                $cloudinaryService->delete($avatarPublicId);
+            } catch (\Exception $e) {
+                \Log::warning('Failed to delete old Cloudinary avatar: ' . $e->getMessage());
+            }
+        } elseif ($avatar && !str_starts_with($avatar, 'http://') && !str_starts_with($avatar, 'https://')) {
+            Storage::disk('public')->delete($avatar);
         }
     }
 

@@ -29,7 +29,11 @@ class PublicFarmerProfileResource extends JsonResource
                     'id' => $this->user->id,
                     'name' => $this->user->name,
                     'location' => $this->user->location,
-                    'avatar' => $this->user->avatar ? asset($this->user->avatar) : null,
+                    // See User::getAvatarUrlAttribute() — handles both a
+                    // legacy local path and a Cloudinary secure_url; a bare
+                    // asset($this->user->avatar) (the old code here) breaks
+                    // both cases in different ways.
+                    'avatar' => $this->user->avatar_url,
                 ];
             }),
             'average_rating' => $this->when(isset($this->average_rating),

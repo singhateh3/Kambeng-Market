@@ -18,7 +18,13 @@ class UserResource extends JsonResource
             'phone' => $this->phone,
             'location' => $this->location,
             'role' => $this->role,
-            'avatar' => $this->avatar ? asset($this->avatar) : null,
+            // Was `asset($this->avatar)`, which is wrong for a legacy local
+            // path (missing the storage/ prefix — asset('avatars/x.jpg')
+            // doesn't resolve through the storage:link symlink) and doubly
+            // wrong for a Cloudinary secure_url (asset() would prefix the
+            // app's own URL onto an already-absolute one). The accessor is
+            // the one place that knows how to tell the two apart.
+            'avatar' => $this->avatar_url,
             'verified_at' => $this->verified_at?->toISOString(),
             'verification_status' => $this->verification_status ?? 'pending',
             'verification_status_label' => $this->verification_status_label ?? 'Pending',
