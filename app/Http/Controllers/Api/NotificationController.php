@@ -29,7 +29,9 @@ class NotificationController extends Controller
                 }
             }
 
-            $perPage = $request->input('per_page', 20);
+            // Capped the same way ListProductsRequest already caps public
+            // product listing.
+            $perPage = max(1, min((int) $request->input('per_page', 20), 100));
             $notifications = $query->paginate($perPage);
 
             // Format the response to match frontend expectations

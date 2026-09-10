@@ -12,9 +12,9 @@ use Tests\TestCase;
 
 /**
  * Covers the Cache::remember() added to AdminDashboardController::statistics()
- * and FarmerProfileController::statistics(), and the Order/Product/User
- * model-event invalidation registered in
- * AppServiceProvider::configureDashboardCacheInvalidation().
+ * (and, in the P1 pass, ::chartData() too) and FarmerProfileController::
+ * statistics(), and the Order/Product/User model-event invalidation
+ * registered in AppServiceProvider::configureDashboardCacheInvalidation().
  */
 class DashboardStatisticsCachingTest extends TestCase
 {
@@ -41,6 +41,34 @@ class DashboardStatisticsCachingTest extends TestCase
             ->json('data.orders.total');
 
         $this->assertSame($before + 1, $after);
+    }
+
+    public function test_admin_charts_reflect_a_new_order_after_cache_invalidation(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $product = Product::factory()->create();
+
+        Sanctum::actingAs($admin);
+
+        $today = now()->toDateString();
+
+        $before = $this->getJson('/api/admin/dashboard/charts')
+            ->assertStatus(200)
+            ->json('data.daily_orders');
+        $beforeCount = collect($before)->firstWhere('date', $today)['count'] ?? 0;
+
+        Order::factory()->create(['product_id' => $product->id, 'created_at' => now()]);
+
+        // Without invalidation (DashboardCache::forgetAdmin() now clears
+        // both the statistics and charts cache entries together — see
+        // that method) this would still read the pre-order count back
+        // from cache instead of the fresh total.
+        $after = $this->getJson('/api/admin/dashboard/charts')
+            ->assertStatus(200)
+            ->json('data.daily_orders');
+        $afterCount = collect($after)->firstWhere('date', $today)['count'] ?? 0;
+
+        $this->assertSame($beforeCount + 1, $afterCount);
     }
 
     public function test_farmer_statistics_are_cached_per_farmer_and_invalidated_on_new_order(): void

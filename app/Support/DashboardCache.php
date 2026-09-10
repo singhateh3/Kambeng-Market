@@ -24,10 +24,16 @@ class DashboardCache
     public const TTL_SECONDS = 300;
 
     private const ADMIN_KEY = 'dashboard:admin:statistics';
+    private const ADMIN_CHARTS_KEY = 'dashboard:admin:charts';
 
     public static function adminKey(): string
     {
         return self::ADMIN_KEY;
+    }
+
+    public static function adminChartsKey(): string
+    {
+        return self::ADMIN_CHARTS_KEY;
     }
 
     public static function farmerKey(int $farmerId): string
@@ -35,9 +41,15 @@ class DashboardCache
         return "dashboard:farmer:{$farmerId}:statistics";
     }
 
+    /**
+     * Forgets both admin-facing dashboard caches together — statistics()
+     * and chartData() draw from the same underlying order/product/user
+     * data, so every call site that needs one already needs the other.
+     */
     public static function forgetAdmin(): void
     {
         Cache::forget(self::ADMIN_KEY);
+        Cache::forget(self::ADMIN_CHARTS_KEY);
     }
 
     public static function forgetFarmer(?int $farmerId): void

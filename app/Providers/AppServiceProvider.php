@@ -162,5 +162,83 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('products-create', function (Request $request) {
             return Limit::perMinute(10)->by($request->user()->id);
         });
+
+        // --------------------------------------------------------------
+        // P1 hardening — everything below this line was added after the
+        // P0 pass (rate-limit audit "remaining P1 work"). None of the
+        // limiters above were touched.
+        // --------------------------------------------------------------
+
+        // PUT /user/profile, PUT /farmer/profile — can include an avatar
+        // upload (Cloudinary), so keep it above trivial "fixed a typo"
+        // editing pace but well below what a script hammering it would
+        // produce.
+        RateLimiter::for('profile-update', function (Request $request) {
+            return Limit::perMinute(20)->by($request->user()->id);
+        });
+
+        // POST /farmer/profile/avatar — a dedicated Cloudinary upload (plus
+        // a delete of the old asset on replace), tighter than the general
+        // profile-update limit since it's the more expensive of the two.
+        RateLimiter::for('avatar-upload', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()->id);
+        });
+
+        // PUT/PATCH/DELETE /products/{id}, photo add/delete — cheaper than
+        // creation (no notification fan-out) but still Cloudinary-touching
+        // for the photo endpoints, so still tighter than a pure-DB write.
+        RateLimiter::for('products-write', function (Request $request) {
+            return Limit::perMinute(30)->by($request->user()->id);
+        });
+
+        // Order-state actions a buyer/farmer takes on an existing order:
+        // cancel, status update, report/dispute, buyer confirm. Generous
+        // enough for legitimate retries/double-clicks; each individual
+        // action is already independently guarded by its own status-
+        // transition/ownership checks regardless of this limit.
+        RateLimiter::for('order-actions', function (Request $request) {
+            return Limit::perMinute(20)->by($request->user()->id);
+        });
+
+        // POST /orders/{id}/review — a stopgap against the app-level-only
+        // (no DB unique constraint — see the reviews table migration
+        // above) duplicate-review check being raced by near-simultaneous
+        // requests; tight since a legitimate buyer only ever reviews an
+        // order once.
+        RateLimiter::for('review-create', function (Request $request) {
+            return Limit::perMinute(5)->by($request->user()->id);
+        });
+
+        // Notification read/delete actions — cheap, ownership-scoped,
+        // already low risk (see NotificationController); generous limit
+        // purely as blast-radius insurance.
+        RateLimiter::for('notifications-write', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()->id);
+        });
+
+        // Save/unsave a farmer — already idempotent and cheap
+        // (SavedFarmerController); limiter is defense-in-depth only.
+        RateLimiter::for('saved-farmers-write', function (Request $request) {
+            return Limit::perMinute(30)->by($request->user()->id);
+        });
+
+        // General admin writes (user management, farmer verification,
+        // product/order moderation, disputes). Admin auth+role is the real
+        // gate here — this is a brake on a compromised/scripted admin
+        // session, not a primary control, so it's generous.
+        RateLimiter::for('admin-write', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()->id);
+        });
+
+        // POST /admin/orders/{id}/retry-payout, /confirm-refund — real
+        // money movement. Already the best-protected admin actions in the
+        // app (ownership/policy checks, atomic conditional-claim UPDATEs,
+        // an explicit ambiguous-outcome acknowledgment gate on retry — see
+        // AdminOrderController) — this limiter is an extra margin against
+        // a compromised admin session firing rapid repeated retries, not a
+        // substitute for that existing protection.
+        RateLimiter::for('admin-financial', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()->id);
+        });
     }
 }

@@ -144,7 +144,11 @@ class AdminProductController extends Controller
     {
         try {
             $request->validate([
-                'product_ids' => 'required|array',
+                // Capped so one request can't loop an unbounded number of
+                // individual deletes (each also does a Cloudinary cleanup) —
+                // matches the cap already used on public product listing
+                // (ListProductsRequest).
+                'product_ids' => 'required|array|max:100',
                 'product_ids.*' => 'exists:products,id',
             ]);
 
@@ -176,6 +180,12 @@ class AdminProductController extends Controller
                 'success' => true,
                 'message' => "{$deletedCount} products deleted successfully",
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             \Log::error('Error bulk deleting products: ' . $e->getMessage());
             return response()->json([

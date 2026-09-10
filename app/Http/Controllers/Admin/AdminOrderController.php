@@ -43,7 +43,11 @@ class AdminOrderController extends Controller
                 return $query->where('total_price', '<=', $maxPrice);
             });
 
-        $orders = $query->latest()->paginate($request->per_page ?? 20);
+        // Capped the same way ListProductsRequest already caps public
+        // product listing, so a large per_page can't force this
+        // multi-relation eager-loaded query into an unbounded result.
+        $perPage = max(1, min((int) ($request->per_page ?? 20), 100));
+        $orders = $query->latest()->paginate($perPage);
 
         return response()->json([
             'success' => true,

@@ -109,9 +109,22 @@ class AdminDashboardController extends Controller
     }
 
     /**
-     * Get chart data for dashboard
+     * Get chart data for dashboard. Cached — same reasoning as
+     * statistics() above (see DashboardCache::forgetAdmin(), which
+     * invalidates both together since they draw from the same
+     * order/product/user data).
      */
     public function chartData(): JsonResponse
+    {
+        $data = Cache::remember(DashboardCache::adminChartsKey(), DashboardCache::TTL_SECONDS, fn () => $this->computeChartData());
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
+    private function computeChartData(): array
     {
         // Get last 7 days of orders
         $dailyOrders = Order::select(
@@ -150,13 +163,10 @@ class AdminDashboardController extends Controller
         ->orderBy('date')
         ->get();
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'daily_orders' => $dailyOrders,
-                'monthly_revenue' => $monthlyRevenue,
-                'user_growth' => $userGrowth,
-            ],
-        ]);
+        return [
+            'daily_orders' => $dailyOrders,
+            'monthly_revenue' => $monthlyRevenue,
+            'user_growth' => $userGrowth,
+        ];
     }
 }

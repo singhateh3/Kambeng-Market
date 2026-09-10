@@ -50,7 +50,15 @@ class OrderController extends Controller
                 $query->where('status', $request->status);
             }
 
-            $orders = $query->latest('order_date')->paginate($request->per_page ?? 20);
+            // Capped the same way ListProductsRequest already caps public
+            // product listing — otherwise a large per_page forces this
+            // multi-relation eager-loaded query to build an unbounded
+            // result. Clamped rather than validated/rejected: this
+            // method's catch (\Exception $e) below would otherwise turn a
+            // ValidationException into a 500, which isn't worth restructuring
+            // the error handling here just to add a page-size cap.
+            $perPage = min((int) ($request->per_page ?? 20), 100);
+            $orders = $query->latest('order_date')->paginate(max($perPage, 1));
 
             return response()->json([
                 'success' => true,
@@ -469,12 +477,28 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            $review = Review::create([
-                'order_id' => $order->id,
-                'user_id' => auth()->id(),
-                'rating' => $request->rating,
-                'comment' => $request->comment,
-            ]);
+            try {
+                $review = Review::create([
+                    'order_id' => $order->id,
+                    'user_id' => auth()->id(),
+                    'rating' => $request->rating,
+                    'comment' => $request->comment,
+                ]);
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                // The check above already covers the normal case — this
+                // only fires if a second request for the same order won
+                // the race between that check and this insert. The
+                // DB-level unique index on reviews.order_id (see its
+                // migration) is what actually stops the duplicate row;
+                // this just turns that into the same clean response
+                // instead of a 500 — same pattern already used in
+                // SavedFarmerController::store() and this class's own
+                // report().
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Review already exists for this order',
+                ], 422);
+            }
 
             // Send review notification to farmer and admins
             try {

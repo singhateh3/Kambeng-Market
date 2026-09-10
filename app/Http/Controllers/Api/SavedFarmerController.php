@@ -35,7 +35,9 @@ class SavedFarmerController extends Controller
                     return $query->where('farmer_id', $farmerId);
                 })
                 ->latest()
-                ->paginate($request->per_page ?? 20);
+                // Capped the same way ListProductsRequest already caps
+                // public product listing.
+                ->paginate(max(1, min((int) ($request->per_page ?? 20), 100)));
 
             return response()->json([
                 'success' => true,

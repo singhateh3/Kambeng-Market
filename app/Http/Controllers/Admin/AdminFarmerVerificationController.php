@@ -255,7 +255,11 @@ class AdminFarmerVerificationController extends Controller
     {
         try {
             $request->validate([
-                'farmer_ids' => 'required|array',
+                // Capped so one request can't loop an unbounded number of
+                // individual approvals (each also sends a notification) —
+                // matches the cap already used on public product listing
+                // (ListProductsRequest).
+                'farmer_ids' => 'required|array|max:100',
                 'farmer_ids.*' => 'exists:users,id',
             ]);
 
@@ -289,6 +293,12 @@ class AdminFarmerVerificationController extends Controller
                 'success' => true,
                 'message' => $farmers->count() . ' farmers approved successfully',
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             \Log::error('Error bulk approving farmers: ' . $e->getMessage());
             return response()->json([
