@@ -59,8 +59,34 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // Handle model not found exceptions for API
+        // Handle model not found exceptions for API. Kept even though it
+        // never actually fires for a real HTTP request (see the render()
+        // closure below) — Laravel's own Handler::prepareException()
+        // converts ModelNotFoundException into NotFoundHttpException
+        // BEFORE any render() closure is checked, so a closure type-hinted
+        // for the original ModelNotFoundException class is unreachable via
+        // the normal request lifecycle. Left in place as harmless,
+        // self-documenting intent (and a defensive no-op for the unlikely
+        // case something calls the handler directly with the original
+        // exception type, bypassing prepareException()).
         $exceptions->render(function (\Illuminate\Database\Eloquent\ModelNotFoundException $e, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Resource not found',
+                    'code' => 'NOT_FOUND'
+                ], 404);
+            }
+        });
+
+        // This is the exception type render() closures actually receive
+        // for a not-found lookup — see the comment above. Also covers a
+        // genuinely nonexistent route/URL, and any other exception Laravel
+        // itself maps to a 404 (RecordNotFoundException, RecordsNotFoundException,
+        // BackedEnumCaseNotFoundException — see Handler::prepareException()).
+        // Same response shape as the ModelNotFoundException closure above,
+        // since it's the same "this resource doesn't exist" case.
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([
                     'success' => false,
@@ -79,6 +105,28 @@ return Application::configure(basePath: dirname(__DIR__))
                     'message' => 'Too many attempts. Please try again later.',
                     'code' => 'TOO_MANY_ATTEMPTS',
                 ], 429, $e->getHeaders());
+            }
+        });
+
+        // Defensive catch-all, deliberately registered LAST so every more
+        // specific closure above still gets first refusal (Handler::
+        // renderViaCallbacks() checks registered render() closures in
+        // registration order and stops at the first one that returns a
+        // non-null response). Exists so an api/*-or-JSON-expecting request
+        // can never fall through to Laravel's default exception rendering
+        // — which, for this API-only app (no config/view.php — see that
+        // migration/config decision), can itself fail while trying to
+        // compile a Blade error view, surfacing a raw framework exception
+        // (internal file paths, class names, stack trace) publicly instead
+        // of a safe response. Deliberately generic: never includes the
+        // exception's own class, message, trace, or any config/env value.
+        $exceptions->render(function (\Throwable $e, $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'An unexpected error occurred. Please try again later.',
+                    'code' => 'SERVER_ERROR',
+                ], 500);
             }
         });
     })
