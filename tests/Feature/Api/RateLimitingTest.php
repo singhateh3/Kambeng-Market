@@ -12,10 +12,11 @@ use Tests\TestCase;
 
 /**
  * Covers the throttling added for POST /api/orders, public product
- * browsing/detail, and the public farmer-profile endpoint
- * (AppServiceProvider::configureRateLimiting()). Each test method gets a
- * fresh application instance (and therefore a fresh 'array' cache store —
- * see phpunit.xml's CACHE_STORE), so counts never leak between tests.
+ * browsing/detail, the public farmer-profile endpoint, and POST
+ * /api/products (AppServiceProvider::configureRateLimiting()). Each test
+ * method gets a fresh application instance (and therefore a fresh 'array'
+ * cache store — see phpunit.xml's CACHE_STORE), so counts never leak
+ * between tests.
  */
 class RateLimitingTest extends TestCase
 {
@@ -97,5 +98,56 @@ class RateLimitingTest extends TestCase
         $this->getJson("/api/farmers/{$farmer->id}/profile")
             ->assertStatus(429)
             ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
+    }
+
+    private function validProductPayload(): array
+    {
+        // No 'photos' key — ProductController::store()'s Cloudinary upload
+        // path only runs when photos are actually present in the request
+        // (see ProductStoreTest.php, which already exercises product
+        // creation with no photos and no Cloudinary mocking needed), so
+        // this stays isolated from any external service without faking one.
+        return [
+            'name' => 'Fresh Tomatoes',
+            'category' => 'Vegetables',
+            'quantity' => 20,
+            'unit' => 'kg',
+            'price' => 15.50,
+            'harvest_date' => now()->subDay()->toDateString(),
+            'expiry_date' => now()->addDays(10)->toDateString(),
+            'description' => 'Vine-ripened tomatoes, picked this morning.',
+        ];
+    }
+
+    public function test_product_creation_is_throttled_per_user_after_ten_per_minute(): void
+    {
+        $farmer = User::factory()->create(['role' => 'farmer']);
+        Sanctum::actingAs($farmer);
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/products', $this->validProductPayload())->assertStatus(201);
+        }
+
+        $response = $this->postJson('/api/products', $this->validProductPayload());
+
+        $response->assertStatus(429)
+            ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
+    }
+
+    public function test_product_creation_limit_is_independent_per_farmer(): void
+    {
+        $farmerA = User::factory()->create(['role' => 'farmer']);
+        Sanctum::actingAs($farmerA);
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/products', $this->validProductPayload())->assertStatus(201);
+        }
+        // Farmer A is now throttled.
+        $this->postJson('/api/products', $this->validProductPayload())->assertStatus(429);
+
+        // Farmer B's own limit is untouched by farmer A's usage — same
+        // user-keyed isolation already proven for orders-create above.
+        $farmerB = User::factory()->create(['role' => 'farmer']);
+        Sanctum::actingAs($farmerB);
+        $this->postJson('/api/products', $this->validProductPayload())->assertStatus(201);
     }
 }

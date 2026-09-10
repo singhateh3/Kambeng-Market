@@ -221,7 +221,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/my-products', [ProductController::class, 'myProducts']); // <-- This must be BEFORE /products/{product}
 
     Route::prefix('products')->group(function () {
-        Route::post('/', [ProductController::class, 'store']);
+        Route::post('/', [ProductController::class, 'store'])->middleware('throttle:products-create');
         Route::put('/{product}', [ProductController::class, 'update']);
         Route::patch('/{product}/status', [ProductController::class, 'updateStatus']);
         Route::delete('/{product}', [ProductController::class, 'destroy']);

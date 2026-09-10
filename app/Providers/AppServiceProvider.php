@@ -152,5 +152,15 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('modempay-webhook', function (Request $request) {
             return Limit::perMinute(300)->by($request->ip());
         });
+
+        // POST /products — authenticated only, so key on the user, same
+        // reasoning as orders-create. This is the most expensive
+        // authenticated write in the app: up to 5 Cloudinary uploads plus a
+        // synchronous per-buyer notification fan-out (NotificationService::
+        // newProductListed()). 10/minute is well above legitimate listing
+        // pace but stops a script from hammering it.
+        RateLimiter::for('products-create', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()->id);
+        });
     }
 }

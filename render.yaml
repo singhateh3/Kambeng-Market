@@ -46,7 +46,7 @@ services:
       - key: QUEUE_CONNECTION
         value: database
       - key: SANCTUM_TOKEN_EXPIRATION
-        value: 43200
+        value: 10080
 
   # Drives Laravel's own scheduler (routes/console.php) in production —
   # the web service's container only runs php-fpm/nginx under supervisord
@@ -119,4 +119,4 @@ services:
       - key: QUEUE_CONNECTION
         value: database
       - key: SANCTUM_TOKEN_EXPIRATION
-        value: 43200
+        value: 10080

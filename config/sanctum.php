@@ -65,9 +65,17 @@ return [
     | flat expiration with no silent renewal: once a token passes this age,
     | its next request gets a 401 and the user has to log in again.
     |
+    | 7 days (down from a prior 30-day default) — chosen to bound how long a
+    | leaked/stolen bearer token stays valid given there is no refresh flow
+    | and no multi-device support (login revokes every other token; see
+    | AuthController::login()). This fallback is what local dev and the
+    | test suite actually run against, since neither sets
+    | SANCTUM_TOKEN_EXPIRATION — production's real value is set directly in
+    | render.yaml.
+    |
     */
 
-    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 43200), // 30 days, in minutes
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 10080), // 7 days, in minutes
 
     /*
     |--------------------------------------------------------------------------

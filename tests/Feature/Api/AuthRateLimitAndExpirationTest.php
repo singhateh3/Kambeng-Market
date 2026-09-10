@@ -9,9 +9,12 @@ use Tests\TestCase;
 /**
  * Covers the throttling added to POST /api/login, /api/register,
  * /api/forgot-password (AppServiceProvider::configureRateLimiting) and the
- * Sanctum token expiration added in config/sanctum.php. These are the real,
- * actively-used API auth endpoints — not the unused Breeze web scaffolding
- * under routes/auth.php, which already has its own separate test coverage.
+ * Sanctum token expiration configured in config/sanctum.php. These are the
+ * real, actively-used API auth endpoints the SPA calls — the Breeze web
+ * scaffolding under routes/auth.php (not used by the SPA, but live in
+ * production) has its own separate test coverage in
+ * tests/Feature/Auth/AuthenticationTest.php and
+ * tests/Feature/Auth/WebAuthThrottlingTest.php.
  */
 class AuthRateLimitAndExpirationTest extends TestCase
 {
@@ -110,21 +113,24 @@ class AuthRateLimitAndExpirationTest extends TestCase
             ->assertJsonPath('data.id', $user->id);
     }
 
-    public function test_expired_tokens_are_rejected(): void
+    /**
+     * Both boundary tests read config('sanctum.expiration') rather than
+     * hardcoding "10080" — this is the actual configured window (7 days as
+     * of this test, see config/sanctum.php), and reading it live means
+     * these tests keep testing the real boundary even if that value is
+     * retuned again later, rather than silently testing a stale number.
+     */
+    public function test_token_just_inside_the_expiration_window_remains_valid(): void
     {
         $user = User::factory()->create(['role' => 'buyer']);
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        // Sanity check: the token authenticates immediately after issuance.
-        $this->withHeader('Authorization', 'Bearer '.$token)
-            ->getJson('/api/user')
-            ->assertStatus(200);
+        $expirationMinutes = config('sanctum.expiration');
 
         // Sanctum checks expiration dynamically against created_at on every
-        // request (see config/sanctum.php), so travelling past the
-        // configured window is enough to invalidate an already-issued
-        // token — no need to fabricate an expires_at value.
-        $this->travel(31)->days();
+        // request (see config/sanctum.php), so travelling forward is enough
+        // to exercise this — no need to fabricate an expires_at value.
+        $this->travel($expirationMinutes - 1)->minutes();
 
         // Auth's RequestGuard caches the user it resolved for the first
         // request in-memory (see RequestGuard::user()) and won't
@@ -135,6 +141,94 @@ class AuthRateLimitAndExpirationTest extends TestCase
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/user')
+            ->assertStatus(200);
+    }
+
+    public function test_token_just_beyond_the_expiration_window_is_rejected(): void
+    {
+        $user = User::factory()->create(['role' => 'buyer']);
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        $expirationMinutes = config('sanctum.expiration');
+
+        $this->travel($expirationMinutes + 1)->minutes();
+        $this->app['auth']->forgetGuards();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/user')
             ->assertStatus(401);
+    }
+
+    /**
+     * The Breeze /logout test (tests/Feature/Auth/AuthenticationTest.php)
+     * exercises the unused 'web' session guard, not the Sanctum bearer
+     * token the SPA actually holds — this specifically proves the real
+     * API token is dead after AuthController::logout().
+     */
+    public function test_api_logout_revokes_the_token_used_to_log_out(): void
+    {
+        $user = User::factory()->create(['role' => 'buyer']);
+
+        $login = $this->postJson('/api/login', [
+            'email' => $user->email,
+            'password' => 'password', // UserFactory's default
+        ]);
+        $token = $login->json('data.token');
+
+        // AuthController::login() authenticates via auth()->attempt(),
+        // which — only inside Laravel's test client, never in real
+        // production traffic (the SPA's axios instance never sends
+        // cookies; see services/api.js) — leaves the 'web' session guard
+        // logged in for the rest of this test. Left alone, the next
+        // request would authenticate through that stateful session
+        // instead of the Bearer token, and currentAccessToken() would
+        // return Sanctum's placeholder TransientToken (no delete()
+        // method) instead of the real PersonalAccessToken this test needs
+        // to exercise. Logging the web guard out isolates the two.
+        $this->app['auth']->guard('web')->logout();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/logout')
+            ->assertStatus(200);
+
+        $this->app['auth']->forgetGuards();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/user')
+            ->assertStatus(401);
+    }
+
+    /**
+     * Documents the existing single-active-token architecture:
+     * AuthController::login() calls $user->tokens()->delete() before
+     * issuing a new one, so there is never more than one valid token per
+     * user — a second device signing in silently signs the first one out.
+     */
+    public function test_second_login_revokes_the_first_devices_token(): void
+    {
+        $user = User::factory()->create(['role' => 'buyer']);
+        $credentials = ['email' => $user->email, 'password' => 'password'];
+
+        $tokenA = $this->postJson('/api/login', $credentials)->json('data.token');
+        $tokenB = $this->postJson('/api/login', $credentials)->json('data.token');
+
+        $this->assertNotSame($tokenA, $tokenB);
+
+        // See the matching comment in test_api_logout_revokes_the_token_used_to_log_out()
+        // — isolates these Bearer-token checks from the 'web' session
+        // guard auth()->attempt() left logged in, a test-client-only
+        // artifact.
+        $this->app['auth']->guard('web')->logout();
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$tokenA)
+            ->getJson('/api/user')
+            ->assertStatus(401);
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Authorization', 'Bearer '.$tokenB)
+            ->getJson('/api/user')
+            ->assertStatus(200)
+            ->assertJsonPath('data.id', $user->id);
     }
 }
