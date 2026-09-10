@@ -100,6 +100,12 @@ class AdminUserController extends Controller
                 'message' => 'User role updated successfully',
                 'data' => new UserResource($user),
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -177,6 +183,12 @@ class AdminUserController extends Controller
                 'message' => $request->is_active ? 'User activated successfully' : 'User suspended successfully',
                 'data' => new UserResource($user),
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

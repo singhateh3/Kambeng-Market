@@ -187,6 +187,12 @@ class AdminFarmerVerificationController extends Controller
                 'message' => 'Farmer approved successfully',
                 'data' => new UserResource($farmer->load('farmerProfile')),
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             \Log::error('Error approving farmer: ' . $e->getMessage());
             return response()->json([
@@ -239,6 +245,12 @@ class AdminFarmerVerificationController extends Controller
                 'message' => 'Farmer rejected',
                 'data' => new UserResource($farmer->load('farmerProfile')),
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             \Log::error('Error rejecting farmer: ' . $e->getMessage());
             return response()->json([
@@ -343,6 +355,12 @@ class AdminFarmerVerificationController extends Controller
                     'path' => $path,
                 ],
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             \Log::error('Error uploading document: ' . $e->getMessage());
             return response()->json([

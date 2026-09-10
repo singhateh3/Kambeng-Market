@@ -304,6 +304,12 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Password reset link sent to your email',
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             \Log::error('Error sending password reset: ' . $e->getMessage());
             return response()->json([

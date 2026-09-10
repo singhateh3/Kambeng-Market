@@ -373,6 +373,12 @@ class ProductController extends Controller
                 'message' => 'Product quantity updated',
                 'data' => $product,
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Error updating product quantity: ' . $e->getMessage());
             return response()->json([
@@ -429,6 +435,12 @@ class ProductController extends Controller
                 'message' => 'Photos added successfully',
                 'data' => $product->photos,
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Error adding photos: ' . $e->getMessage());
             return response()->json([
@@ -466,6 +478,12 @@ class ProductController extends Controller
                 'message' => 'Photo deleted successfully',
                 'data' => $product->photos,
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Error deleting photo: ' . $e->getMessage());
             return response()->json([
