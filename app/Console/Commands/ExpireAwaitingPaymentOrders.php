@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\Order;
 use App\Models\PaymentTransaction;
+use App\Support\DashboardCache;
 use Illuminate\Console\Command;
 
 /**
@@ -26,6 +27,7 @@ class ExpireAwaitingPaymentOrders extends Command
 
         $orders = Order::where('status', 'awaiting_payment')
             ->where('created_at', '<=', now()->subMinutes($timeoutMinutes))
+            ->with('product')
             ->get();
 
         $expired = 0;
@@ -50,6 +52,13 @@ class ExpireAwaitingPaymentOrders extends Command
                 ->where('type', 'charge')
                 ->where('status', 'pending')
                 ->update(['status' => 'failed']);
+
+            // Same reasoning as PaymentConfirmationService::confirmPayment()
+            // and ModemPayWebhookController::handlePaymentFailedOrExpired()
+            // — the atomic-claim UPDATE above is a query-builder mass
+            // update, so it never fired Order's 'saved' event.
+            DashboardCache::forgetAdmin();
+            DashboardCache::forgetFarmer($order->product?->farmer_id);
 
             $expired++;
             $this->info("Expired awaiting_payment order #{$order->id}");

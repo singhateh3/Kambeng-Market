@@ -9,7 +9,11 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\User;
 use App\Services\NotificationService;
+use App\Support\DashboardCache;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -34,6 +38,37 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->configureRateLimiting();
+        $this->configureDashboardCacheInvalidation();
+    }
+
+    /**
+     * Dashboard/farmer statistics are cached (see DashboardCache and
+     * AdminDashboardController::statistics() / FarmerProfileController::statistics()).
+     * Registered here as model events rather than scattered Cache::forget()
+     * calls in every controller that touches an order/product/user — this
+     * way every current and future write path (including the ModemPay
+     * webhook, which updates orders directly) invalidates automatically.
+     */
+    protected function configureDashboardCacheInvalidation(): void
+    {
+        $forgetForOrder = function (Order $order): void {
+            DashboardCache::forgetAdmin();
+            DashboardCache::forgetFarmer($order->product?->farmer_id);
+        };
+        Order::saved($forgetForOrder);
+        Order::deleted($forgetForOrder);
+
+        $forgetForProduct = function (Product $product): void {
+            DashboardCache::forgetAdmin();
+            DashboardCache::forgetFarmer($product->farmer_id);
+        };
+        Product::saved($forgetForProduct);
+        Product::deleted($forgetForProduct);
+
+        // Admin stats include user/farmer-verification counts; farmer
+        // statistics don't depend on User fields, so no per-farmer forget here.
+        User::saved(fn () => DashboardCache::forgetAdmin());
+        User::deleted(fn () => DashboardCache::forgetAdmin());
     }
 
     /**
@@ -84,6 +119,38 @@ class AppServiceProvider extends ServiceProvider
         // global bucket instead of limiting per source.
         RateLimiter::for('social-login', function (Request $request) {
             return Limit::perMinute(10)->by($request->ip());
+        });
+
+        // POST /orders — authenticated only, so key on the user, not the
+        // IP (shared connections/NAT shouldn't throttle each other).
+        // 10/minute is well above legitimate checkout pace but stops a
+        // buggy client or script from hammering order creation.
+        RateLimiter::for('orders-create', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()->id);
+        });
+
+        // Public product browsing/detail (GET /products, /products/{id},
+        // /products/categories, /products/regions, /products/featured) —
+        // unauthenticated, so IP is the only signal. Generous enough for
+        // normal browsing (search-as-you-type, pagination, product-detail
+        // navigation) while still bounding scraping/abuse.
+        RateLimiter::for('public-products', function (Request $request) {
+            return Limit::perMinute(100)->by($request->ip());
+        });
+
+        // Public farmer profile (GET /farmers/{id}/profile) — unauthenticated.
+        RateLimiter::for('public-farmer-profile', function (Request $request) {
+            return Limit::perMinute(60)->by($request->ip());
+        });
+
+        // ModemPay webhook — signature-verified, not session-authenticated
+        // (see ModemPayWebhookController), so this exists only to bound
+        // abuse of the endpoint, not to gate legitimate traffic. ModemPay
+        // retries up to 3 times per event on a non-200, and one deploy can
+        // legitimately produce many events in a short window, so this is
+        // deliberately generous and keyed by IP.
+        RateLimiter::for('modempay-webhook', function (Request $request) {
+            return Limit::perMinute(300)->by($request->ip());
         });
     }
 }

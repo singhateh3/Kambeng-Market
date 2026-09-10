@@ -7,6 +7,7 @@ use App\Models\PaymentTransaction;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -152,6 +153,36 @@ class ModemPayWebhookTest extends TestCase
         $fresh = $order->fresh();
         $this->assertSame('cancelled', $fresh->status);
         $this->assertSame('expired', $fresh->payment_status);
+    }
+
+    /**
+     * handlePaymentFailedOrExpired()'s atomic-claim UPDATE is a
+     * query-builder mass update, same as PaymentConfirmationService — it
+     * never fires Order's 'saved' event, so the handler must invalidate
+     * the admin dashboard cache explicitly (see the DashboardCache::forget*()
+     * call added after the claim) rather than relying on the automatic
+     * model-event invalidation, which can't see this write.
+     */
+    public function test_charge_expired_invalidates_the_admin_dashboard_cache(): void
+    {
+        $order = $this->awaitingPaymentOrder();
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        Sanctum::actingAs($admin);
+        $before = $this->getJson('/api/admin/dashboard/statistics')
+            ->assertStatus(200)
+            ->json('data.orders.cancelled');
+
+        $this->postWebhook([
+            'event' => 'payment_intent.expired',
+            'payload' => ['id' => $order->modempay_intent_id],
+        ])->assertStatus(200);
+
+        $after = $this->getJson('/api/admin/dashboard/statistics')
+            ->assertStatus(200)
+            ->json('data.orders.cancelled');
+
+        $this->assertSame($before + 1, $after);
     }
 
     public function test_charge_cancelled_cancels_the_order_as_failed(): void

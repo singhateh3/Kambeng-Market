@@ -42,11 +42,13 @@ Route::post('/auth/apple', [SocialAuthController::class, 'apple'])->middleware('
 Route::get('/public/statistics', [PublicController::class, 'statistics']);
 
 // Public product routes (view only)
-Route::get('/products', [ProductController::class, 'index']);
-Route::get('/products/categories', [ProductController::class, 'categories']);
-Route::get('/products/regions', [ProductController::class, 'regions']);
-Route::get('/products/featured', [ProductController::class, 'featured']);
-Route::get('/products/{product}', [ProductController::class, 'show']);
+Route::middleware('throttle:public-products')->group(function () {
+    Route::get('/products', [ProductController::class, 'index']);
+    Route::get('/products/categories', [ProductController::class, 'categories']);
+    Route::get('/products/regions', [ProductController::class, 'regions']);
+    Route::get('/products/featured', [ProductController::class, 'featured']);
+    Route::get('/products/{product}', [ProductController::class, 'show']);
+});
 
 // Create a simple keep-alive route
 Route::get('/keep-alive', function () {
@@ -54,10 +56,12 @@ Route::get('/keep-alive', function () {
 });
 
 // Public farmer profile routes
-Route::get('/farmers/{userId}/profile', [FarmerProfileController::class, 'publicShow']);
+Route::get('/farmers/{userId}/profile', [FarmerProfileController::class, 'publicShow'])
+    ->middleware('throttle:public-farmer-profile');
 
 // ModemPay webhook — public, signature-verified instead of session-authenticated
-Route::post('/webhooks/modempay', [ModemPayWebhookController::class, 'handle']);
+Route::post('/webhooks/modempay', [ModemPayWebhookController::class, 'handle'])
+    ->middleware('throttle:modempay-webhook');
 
 // ============================================
 // LOCAL-DEVELOPMENT-ONLY ROUTES
@@ -228,7 +232,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Order routes (authenticated users)
     Route::prefix('orders')->group(function () {
         Route::get('/', [OrderController::class, 'index']);
-        Route::post('/', [OrderController::class, 'store']);
+        Route::post('/', [OrderController::class, 'store'])->middleware('throttle:orders-create');
         Route::get('/{order}', [OrderController::class, 'show']);
         Route::patch('/{order}/status', [OrderController::class, 'updateStatus']);
         Route::post('/{order}/cancel', [OrderController::class, 'cancel']);

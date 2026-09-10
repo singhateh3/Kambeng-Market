@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\PaymentTransaction;
+use App\Support\DashboardCache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -57,6 +58,15 @@ class PaymentConfirmationService
             ->update(['status' => 'succeeded']);
 
         $order->refresh()->load(['buyer', 'product', 'product.farmer']);
+
+        // This UPDATE was a query-builder mass update (deliberately, for
+        // the atomic-claim race-safety above), so it never fired Order's
+        // 'saved' event — the model-event invalidation in
+        // AppServiceProvider::configureDashboardCacheInvalidation() never
+        // ran for it. Forget explicitly here instead, now that
+        // product.farmer is loaded above.
+        DashboardCache::forgetAdmin();
+        DashboardCache::forgetFarmer($order->product->farmer_id);
 
         try {
             app(NotificationService::class)->orderPlaced($order->product->farmer, $order);

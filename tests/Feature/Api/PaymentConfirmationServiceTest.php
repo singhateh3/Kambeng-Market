@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\PaymentConfirmationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -122,6 +123,51 @@ class PaymentConfirmationServiceTest extends TestCase
             1,
             \App\Models\Notification::where('user_id', $order->product->farmer_id)->where('type', 'order_placed')->count()
         );
+    }
+
+    /**
+     * confirmPayment()'s atomic-claim UPDATE is a query-builder mass
+     * update (Order::where(...)->update([...])), deliberately not
+     * $order->save() — see the class docblock. Mass updates never fire
+     * Eloquent's 'saved' event, so the automatic cache invalidation
+     * registered in AppServiceProvider::configureDashboardCacheInvalidation()
+     * can't see this write; confirmPayment() must invalidate explicitly
+     * (see the DashboardCache::forget*() calls added after the claim).
+     * This proves the dashboard/farmer stats endpoints reflect the new
+     * 'pending' order immediately rather than a 5-minute-stale cached
+     * count.
+     */
+    public function test_confirming_payment_invalidates_admin_and_farmer_dashboard_cache(): void
+    {
+        $order = $this->awaitingPaymentOrder();
+        $farmer = $order->product->farmer;
+        \App\Models\FarmerProfile::factory()->create(['user_id' => $farmer->id]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        Sanctum::actingAs($admin);
+        $beforeAdminPending = $this->getJson('/api/admin/dashboard/statistics')
+            ->assertStatus(200)
+            ->json('data.orders.pending');
+
+        Sanctum::actingAs($farmer);
+        $beforeFarmerPending = $this->getJson('/api/farmer/profile/statistics')
+            ->assertStatus(200)
+            ->json('data.pending_orders');
+
+        app(PaymentConfirmationService::class)->confirmPayment($order);
+
+        Sanctum::actingAs($admin);
+        $afterAdminPending = $this->getJson('/api/admin/dashboard/statistics')
+            ->assertStatus(200)
+            ->json('data.orders.pending');
+
+        Sanctum::actingAs($farmer);
+        $afterFarmerPending = $this->getJson('/api/farmer/profile/statistics')
+            ->assertStatus(200)
+            ->json('data.pending_orders');
+
+        $this->assertSame($beforeAdminPending + 1, $afterAdminPending);
+        $this->assertSame($beforeFarmerPending + 1, $afterFarmerPending);
     }
 
     public function test_amount_mismatch_does_not_confirm_payment(): void

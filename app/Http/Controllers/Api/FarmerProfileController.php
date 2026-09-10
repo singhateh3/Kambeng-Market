@@ -9,8 +9,10 @@ use App\Http\Resources\PublicFarmerProfileResource;
 use App\Http\Resources\UserResource;
 use App\Models\FarmerProfile;
 use App\Models\Order;
+use App\Support\DashboardCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class FarmerProfileController extends Controller
@@ -127,24 +129,39 @@ class FarmerProfileController extends Controller
     // app/Http/Controllers/Api/FarmerProfileController.php
 
 /**
- * Get farmer statistics.
+ * Get farmer statistics. Cached per-farmer (keyed by user id, never a
+ * shared/global key) since this is only ever returned to the farmer
+ * whose own profile it belongs to — see the auth-scoping note on show()
+ * above. Invalidated by the Order/Product model events registered in
+ * AppServiceProvider::boot().
  */
 public function statistics(Request $request): JsonResponse
 {
     $profile = $request->user()->farmerProfile;
-    
+
     if (!$profile) {
         return response()->json([
             'message' => 'Farmer profile not found',
         ], 404);
     }
 
+    $stats = Cache::remember(
+        DashboardCache::farmerKey($profile->user_id),
+        DashboardCache::TTL_SECONDS,
+        fn () => $this->computeStatistics($profile)
+    );
+
+    return response()->json(['data' => $stats]);
+}
+
+private function computeStatistics(FarmerProfile $profile): array
+{
     // Get orders through products
     $orders = Order::whereHas('product', function ($query) use ($profile) {
         $query->where('farmer_id', $profile->user_id);
     });
 
-    $stats = [
+    return [
         'total_products' => $profile->products()->count(),
         'active_products' => $profile->products()->active()->count(),
         'sold_products' => $profile->products()->where('status', 'sold')->count(),
@@ -160,7 +177,5 @@ public function statistics(Request $request): JsonResponse
         'average_rating' => round($profile->getFarmerAverageRating() ?? 0, 1),
         'profile_completion' => $profile->completion_percentage,
     ];
-
-    return response()->json(['data' => $stats]);
 }
 }

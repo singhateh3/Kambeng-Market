@@ -8,17 +8,33 @@ use App\Models\User;
 use App\Models\Product;
 use App\Models\Order;
 use App\Models\Review;
+use App\Support\DashboardCache;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class AdminDashboardController extends Controller
 {
     /**
-     * Get admin dashboard statistics
+     * Get admin dashboard statistics. Cached — this aggregates counts
+     * across users/products/orders/reviews, so it's the most expensive
+     * read on the admin side and is hit every time the dashboard loads.
+     * Invalidated by the Order/Product/User model events registered in
+     * AppServiceProvider::boot() rather than left to expire blindly.
      */
     public function statistics(): JsonResponse
     {
-        $stats = [
+        $stats = Cache::remember(DashboardCache::adminKey(), DashboardCache::TTL_SECONDS, fn () => $this->computeStatistics());
+
+        return response()->json([
+            'success' => true,
+            'data' => $stats,
+        ]);
+    }
+
+    private function computeStatistics(): array
+    {
+        return [
             'users' => [
                 'total' => User::count(),
                 'farmers' => User::where('role', 'farmer')->count(),
@@ -90,11 +106,6 @@ class AdminDashboardController extends Controller
                     ->get(),
             ],
         ];
-
-        return response()->json([
-            'success' => true,
-            'data' => $stats,
-        ]);
     }
 
     /**

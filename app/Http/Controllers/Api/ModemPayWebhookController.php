@@ -10,6 +10,7 @@ use App\Models\PaymentTransaction;
 use App\Models\WebhookEvent;
 use App\Services\ModemPayClient;
 use App\Services\PaymentConfirmationService;
+use App\Support\DashboardCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -202,6 +203,13 @@ class ModemPayWebhookController extends Controller
             ->where('type', 'charge')
             ->where('status', 'pending')
             ->update(['status' => 'failed']);
+
+        // Same reasoning as PaymentConfirmationService::confirmPayment() —
+        // the atomic-claim UPDATE above is a query-builder mass update, so
+        // it never fired Order's 'saved' event and the model-event
+        // invalidation never ran for it.
+        DashboardCache::forgetAdmin();
+        DashboardCache::forgetFarmer($order->product?->farmer_id);
     }
 
     private function findOrderForTransferEvent(array $payload): ?Order

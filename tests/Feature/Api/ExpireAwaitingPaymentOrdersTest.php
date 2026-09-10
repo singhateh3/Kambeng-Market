@@ -7,6 +7,7 @@ use App\Models\PaymentTransaction;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class ExpireAwaitingPaymentOrdersTest extends TestCase
@@ -78,5 +79,32 @@ class ExpireAwaitingPaymentOrdersTest extends TestCase
         $this->artisan('orders:expire-awaiting-payment');
 
         $this->assertSame('cancelled', $order->fresh()->status);
+    }
+
+    /**
+     * The expiry claim is a query-builder mass update
+     * (Order::where(...)->update([...])), same as
+     * PaymentConfirmationService — it never fires Order's 'saved' event,
+     * so the command must invalidate the admin dashboard cache explicitly
+     * (see the DashboardCache::forget*() call added after the claim).
+     */
+    public function test_expiring_an_order_invalidates_the_admin_dashboard_cache(): void
+    {
+        config(['commission.awaiting_payment_timeout_minutes' => 30]);
+        $order = $this->awaitingOrder(now()->subMinutes(45));
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        Sanctum::actingAs($admin);
+        $before = $this->getJson('/api/admin/dashboard/statistics')
+            ->assertStatus(200)
+            ->json('data.orders.cancelled');
+
+        $this->artisan('orders:expire-awaiting-payment')->assertExitCode(0);
+
+        $after = $this->getJson('/api/admin/dashboard/statistics')
+            ->assertStatus(200)
+            ->json('data.orders.cancelled');
+
+        $this->assertSame($before + 1, $after);
     }
 }
