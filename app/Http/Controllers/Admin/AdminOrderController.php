@@ -8,6 +8,7 @@ use App\Http\Resources\OrderResource;
 use App\Models\Order;
 use App\Models\PaymentTransaction;
 use App\Services\PayoutReleaseService;
+use App\Support\Pagination;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -46,8 +47,7 @@ class AdminOrderController extends Controller
         // Capped the same way ListProductsRequest already caps public
         // product listing, so a large per_page can't force this
         // multi-relation eager-loaded query into an unbounded result.
-        $perPage = max(1, min((int) ($request->per_page ?? 20), 100));
-        $orders = $query->latest()->paginate($perPage);
+        $orders = $query->latest()->paginate(Pagination::perPage($request));
 
         return response()->json([
             'success' => true,

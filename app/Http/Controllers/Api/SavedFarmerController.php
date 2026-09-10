@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\SavedFarmerResource;
 use App\Models\SavedFarmer;
 use App\Models\User;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -37,7 +38,7 @@ class SavedFarmerController extends Controller
                 ->latest()
                 // Capped the same way ListProductsRequest already caps
                 // public product listing.
-                ->paginate(max(1, min((int) ($request->per_page ?? 20), 100)));
+                ->paginate(Pagination::perPage($request));
 
             return response()->json([
                 'success' => true,

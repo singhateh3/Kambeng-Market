@@ -13,6 +13,7 @@ use App\Models\Review;
 use App\Services\ModemPayClient;
 use App\Services\NotificationService;
 use App\Services\PayoutReleaseService;
+use App\Support\Pagination;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -57,8 +58,7 @@ class OrderController extends Controller
             // method's catch (\Exception $e) below would otherwise turn a
             // ValidationException into a 500, which isn't worth restructuring
             // the error handling here just to add a page-size cap.
-            $perPage = min((int) ($request->per_page ?? 20), 100);
-            $orders = $query->latest('order_date')->paginate(max($perPage, 1));
+            $orders = $query->latest('order_date')->paginate(Pagination::perPage($request));
 
             return response()->json([
                 'success' => true,

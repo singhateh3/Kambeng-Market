@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Notification;
+use App\Support\Pagination;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -31,8 +32,7 @@ class NotificationController extends Controller
 
             // Capped the same way ListProductsRequest already caps public
             // product listing.
-            $perPage = max(1, min((int) $request->input('per_page', 20), 100));
-            $notifications = $query->paginate($perPage);
+            $notifications = $query->paginate(Pagination::perPage($request));
 
             // Format the response to match frontend expectations
             $formattedNotifications = $notifications->items();

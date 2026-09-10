@@ -70,6 +70,12 @@ class ProfileController extends Controller
                 'message' => 'Profile updated successfully',
                 'data' => $user, // Return the updated user in 'data'
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             \Log::error('Error updating profile: ' . $e->getMessage());
             return response()->json([
