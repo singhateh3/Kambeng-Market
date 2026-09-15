@@ -112,6 +112,140 @@ class RateLimitingTest extends TestCase
             ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
     }
 
+    // ------------------------------------------------------------------
+    // Phase 2 — the four remaining endpoints the audit found with no
+    // limiter at all.
+    // ------------------------------------------------------------------
+
+    public function test_refresh_token_is_throttled_per_user_beyond_five_per_minute(): void
+    {
+        $user = User::factory()->create(['role' => 'buyer']);
+        Sanctum::actingAs($user);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/user/refresh-token')->assertStatus(200);
+        }
+
+        $this->postJson('/api/user/refresh-token')
+            ->assertStatus(429)
+            ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
+    }
+
+    public function test_refresh_token_limit_is_independent_per_user(): void
+    {
+        $userA = User::factory()->create(['role' => 'buyer']);
+        Sanctum::actingAs($userA);
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/user/refresh-token')->assertStatus(200);
+        }
+        // User A is now throttled.
+        $this->postJson('/api/user/refresh-token')->assertStatus(429);
+
+        // User B's own limit is untouched by user A's usage — key is the
+        // authenticated user, not shared/global or IP-based.
+        $userB = User::factory()->create(['role' => 'buyer']);
+        Sanctum::actingAs($userB);
+        $this->postJson('/api/user/refresh-token')->assertStatus(200);
+    }
+
+    public function test_verification_request_is_throttled_per_user_beyond_five_per_hour(): void
+    {
+        // 'rejected' (rather than the factory default 'pending') so the
+        // first call actually reaches the success path instead of
+        // immediately hitting requestVerification()'s own "already
+        // pending" 422 — irrelevant to the throttle itself (every request
+        // counts against the limit regardless of the app-level outcome),
+        // but makes the sequence of responses meaningful to read.
+        $farmer = User::factory()->create(['role' => 'farmer', 'verification_status' => 'rejected']);
+        Sanctum::actingAs($farmer);
+
+        for ($i = 0; $i < 5; $i++) {
+            $status = $this->postJson('/api/farmer/request-verification')->status();
+            $this->assertNotSame(429, $status);
+        }
+
+        $this->postJson('/api/farmer/request-verification')
+            ->assertStatus(429)
+            ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
+    }
+
+    public function test_verification_request_limit_is_shared_across_both_routes(): void
+    {
+        // POST /farmer/profile/verify and POST /farmer/request-verification
+        // both resolve to the same underlying action (see
+        // FarmerProfileController::submitVerification()) — one shared
+        // per-user bucket across both, not two independent 5/hour
+        // allowances for what is really one action reachable two ways.
+        $farmer = User::factory()->create(['role' => 'farmer', 'verification_status' => 'rejected']);
+        Sanctum::actingAs($farmer);
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->postJson('/api/farmer/request-verification')->assertStatus($i === 0 ? 200 : 422);
+        }
+        for ($i = 0; $i < 2; $i++) {
+            $this->postJson('/api/farmer/profile/verify')->assertStatus(422);
+        }
+
+        // 5 combined requests already spent — the 6th, via the other
+        // route again, is throttled.
+        $this->postJson('/api/farmer/profile/verify')
+            ->assertStatus(429)
+            ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
+    }
+
+    public function test_verification_request_limit_is_independent_per_user(): void
+    {
+        $farmerA = User::factory()->create(['role' => 'farmer', 'verification_status' => 'rejected']);
+        Sanctum::actingAs($farmerA);
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/farmer/request-verification');
+        }
+        $this->postJson('/api/farmer/request-verification')->assertStatus(429);
+
+        $farmerB = User::factory()->create(['role' => 'farmer', 'verification_status' => 'rejected']);
+        Sanctum::actingAs($farmerB);
+        $this->postJson('/api/farmer/request-verification')->assertStatus(200);
+    }
+
+    public function test_reset_password_is_throttled_per_ip_beyond_ten_per_hour(): void
+    {
+        // Unauthenticated — an invalid token is enough to exercise the
+        // route/limiter; the throttle middleware runs before validation
+        // either way, so a real token isn't needed to prove the limit.
+        $payload = [
+            'token' => 'invalid-token',
+            'email' => 'nobody@example.com',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ];
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/reset-password', $payload)->assertStatus(422);
+        }
+
+        $this->postJson('/reset-password', $payload)
+            ->assertStatus(429)
+            ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
+    }
+
+    public function test_reset_password_limit_is_independent_per_ip(): void
+    {
+        $payload = [
+            'token' => 'invalid-token',
+            'email' => 'nobody@example.com',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ];
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/reset-password', $payload, ['REMOTE_ADDR' => '10.0.0.1']);
+        }
+        $this->postJson('/reset-password', $payload, ['REMOTE_ADDR' => '10.0.0.1'])->assertStatus(429);
+
+        // A different source IP has its own, untouched bucket.
+        $this->postJson('/reset-password', $payload, ['REMOTE_ADDR' => '10.0.0.2'])->assertStatus(422);
+    }
+
     private function validProductPayload(): array
     {
         // No 'photos' key — ProductController::store()'s Cloudinary upload

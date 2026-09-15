@@ -10,6 +10,7 @@ use App\Models\Dispute;
 use App\Models\PaymentTransaction;
 use App\Services\NotificationService;
 use App\Services\PayoutReleaseService;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -27,7 +28,7 @@ class AdminDisputeController extends Controller
                 return $query->where('status', $status);
             })
             ->latest()
-            ->paginate($request->per_page ?? 20);
+            ->paginate(Pagination::perPage($request));
 
         return response()->json([
             'success' => true,

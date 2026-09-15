@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Support\Pagination;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -57,7 +58,7 @@ class AdminProductController extends Controller
                         ->where('expiry_date', '<', now());
                 });
 
-            $products = $query->latest()->paginate($request->per_page ?? 20);
+            $products = $query->latest()->paginate(Pagination::perPage($request));
 
             return response()->json([
                 'success' => true,

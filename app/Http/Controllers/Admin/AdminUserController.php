@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -36,7 +37,7 @@ class AdminUserController extends Controller
                     return $query->whereNull('verified_at');
                 });
 
-            $users = $query->latest()->paginate($request->per_page ?? 20);
+            $users = $query->latest()->paginate(Pagination::perPage($request));
 
             return response()->json([
                 'success' => true,

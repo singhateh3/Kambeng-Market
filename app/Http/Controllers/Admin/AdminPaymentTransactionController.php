@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\PaymentTransaction;
+use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,7 +24,7 @@ class AdminPaymentTransactionController extends Controller
             ->when($request->type, fn ($q, $type) => $q->where('type', $type))
             ->when($request->status, fn ($q, $status) => $q->where('status', $status));
 
-        $transactions = $query->latest()->paginate($request->per_page ?? 20);
+        $transactions = $query->latest()->paginate(Pagination::perPage($request));
 
         return response()->json([
             'success' => true,

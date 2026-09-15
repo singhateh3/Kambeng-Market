@@ -20,6 +20,12 @@ use Tests\TestCase;
  * reviews.order_id (see that migration), and — from the audit's follow-up
  * review pass — ProfileController::update()'s missing ValidationException
  * handling.
+ *
+ * Phase 2 adds the same per_page clamp coverage for the four admin list
+ * endpoints that were still using the raw, unclamped `$request->per_page
+ * ?? 20` pattern (AdminUserController, AdminProductController,
+ * AdminPaymentTransactionController, AdminDisputeController) — now all on
+ * App\Support\Pagination::perPage(), same as the four above.
  */
 class P1ValidationCapsTest extends TestCase
 {
@@ -101,6 +107,56 @@ class P1ValidationCapsTest extends TestCase
         Sanctum::actingAs($user);
 
         $this->getJson('/api/notifications?per_page=500')
+            ->assertStatus(200)
+            ->assertJsonPath('meta.per_page', 100);
+    }
+
+    public function test_admin_users_index_caps_per_page_at_one_hundred(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/users?per_page=500')
+            ->assertStatus(200)
+            ->assertJsonPath('meta.per_page', 100);
+    }
+
+    public function test_admin_users_index_defaults_to_twenty_per_page(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/users')
+            ->assertStatus(200)
+            ->assertJsonPath('meta.per_page', 20);
+    }
+
+    public function test_admin_products_index_caps_per_page_at_one_hundred(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/products?per_page=500')
+            ->assertStatus(200)
+            ->assertJsonPath('meta.per_page', 100);
+    }
+
+    public function test_admin_payment_transactions_index_caps_per_page_at_one_hundred(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/payment-transactions?per_page=500')
+            ->assertStatus(200)
+            ->assertJsonPath('meta.per_page', 100);
+    }
+
+    public function test_admin_disputes_index_caps_per_page_at_one_hundred(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/admin/disputes?per_page=500')
             ->assertStatus(200)
             ->assertJsonPath('meta.per_page', 100);
     }

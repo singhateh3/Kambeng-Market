@@ -274,5 +274,39 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('public-statistics', function (Request $request) {
             return Limit::perMinute(60)->by($request->ip());
         });
+
+        // --------------------------------------------------------------
+        // Phase 2 — four remaining endpoints the audit found with no
+        // limiter at all. All four are authenticated except reset-password.
+        // --------------------------------------------------------------
+
+        // POST /user/refresh-token — revokes every existing token for the
+        // user and issues one new one (see AuthController::refreshToken()).
+        // Authenticated, so key on the user rather than IP.
+        RateLimiter::for('refresh-token', function (Request $request) {
+            return Limit::perMinute(5)->by($request->user()->id);
+        });
+
+        // POST /farmer/profile/verify and POST /farmer/request-verification
+        // both resolve to the same underlying action
+        // (FarmerVerificationController::requestVerification() — see
+        // FarmerProfileController::submitVerification(), which just calls
+        // through to it) — one shared limiter/bucket per user across both
+        // routes, not two independent 5/hour allowances for what is really
+        // one action reachable two ways.
+        RateLimiter::for('verification-request', function (Request $request) {
+            return Limit::perHour(5)->by($request->user()->id);
+        });
+
+        // POST /reset-password (routes/auth.php) — unauthenticated (the
+        // request carries only a signed token + new password, not a
+        // session), so IP-keyed like the other public auth limiters. A
+        // separate limiter from 'forgot-password' — that one guards
+        // requesting the reset link, this one guards consuming it/setting
+        // the new password, a distinct action with its own audit-specified
+        // limit.
+        RateLimiter::for('reset-password', function (Request $request) {
+            return Limit::perHour(10)->by($request->ip());
+        });
     }
 }

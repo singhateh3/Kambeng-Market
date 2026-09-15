@@ -203,19 +203,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
     Route::put('/user/profile', [AuthController::class, 'updateProfile'])->middleware('throttle:profile-update');
-    Route::post('/user/refresh-token', [AuthController::class, 'refreshToken']);
+    Route::post('/user/refresh-token', [AuthController::class, 'refreshToken'])->middleware('throttle:refresh-token');
 
     // Farmer Profile routes
     Route::prefix('farmer')->group(function () {
         Route::get('/profile', [FarmerProfileController::class, 'show']);
         Route::put('/profile', [FarmerProfileController::class, 'update'])->middleware('throttle:profile-update');
-        Route::post('/profile/verify', [FarmerProfileController::class, 'submitVerification']);
+        Route::post('/profile/verify', [FarmerProfileController::class, 'submitVerification'])->middleware('throttle:verification-request');
         Route::post('/profile/avatar', [FarmerProfileController::class, 'uploadAvatar'])->middleware('throttle:avatar-upload');
         Route::get('/profile/statistics', [FarmerProfileController::class, 'statistics']);
     });
 
     // Farmer verification requests
-    Route::post('/farmer/request-verification', [FarmerVerificationController::class, 'requestVerification']);
+    Route::post('/farmer/request-verification', [FarmerVerificationController::class, 'requestVerification'])->middleware('throttle:verification-request');
     Route::get('/farmer/verification-status', [FarmerVerificationController::class, 'status']);
 
     // Product routes (authenticated users)
