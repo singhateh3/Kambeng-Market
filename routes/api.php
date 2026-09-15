@@ -39,7 +39,7 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:lo
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:forgot-password');
 Route::post('/auth/google', [SocialAuthController::class, 'google'])->middleware('throttle:social-login');
 Route::post('/auth/apple', [SocialAuthController::class, 'apple'])->middleware('throttle:social-login');
-Route::get('/public/statistics', [PublicController::class, 'statistics']);
+Route::get('/public/statistics', [PublicController::class, 'statistics'])->middleware('throttle:public-statistics');
 
 // Public product routes (view only)
 Route::middleware('throttle:public-products')->group(function () {

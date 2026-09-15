@@ -38,40 +38,39 @@ class NotificationService
     /**
      * Get the appropriate base URL for a user
      */
-    private function getBaseUrl(User $user): string
+    private function getBaseUrl(bool $isAdmin): string
     {
-        if ($user->isAdmin()) {
+        if ($isAdmin) {
             return '/app/admin';
         }
         return '/app';
     }
 
     /**
-     * Generate a notification link based on user role
+     * Generate a notification link based on user role. Takes the
+     * admin/non-admin distinction as a plain bool (rather than a full
+     * User model) so this can also be used by sendManyToUserIds() below,
+     * which deliberately never loads full User rows for its recipients.
      */
-    private function generateLink(User $user, string $path): string
+    private function generateLink(bool $isAdmin, string $path): string
     {
         // If path already starts with /app, return as-is
         if (str_starts_with($path, '/app')) {
             return $path;
         }
 
-        $baseUrl = $this->getBaseUrl($user);
+        $baseUrl = $this->getBaseUrl($isAdmin);
 
         // Clean the path - remove leading slash
         $cleanPath = ltrim($path, '/');
 
         // For admin users, check if the path already has 'admin' prefix
-        if ($user->isAdmin() && str_starts_with($cleanPath, 'admin/')) {
+        if ($isAdmin && str_starts_with($cleanPath, 'admin/')) {
             // Remove 'admin/' from the path to avoid duplication
             $cleanPath = substr($cleanPath, 6);
         }
 
-        $fullLink = "{$baseUrl}/{$cleanPath}";
-
-        Log::info('Generated link for user ' . $user->id . ': ' . $fullLink);
-
-        return $fullLink;
+        return "{$baseUrl}/{$cleanPath}";
     }
 
     /**
@@ -90,7 +89,7 @@ class NotificationService
         if ($link) {
             // If link doesn't start with /app or http, generate it
             if (!str_starts_with($link, '/app') && !str_starts_with($link, 'http')) {
-                $link = $this->generateLink($user, $link);
+                $link = $this->generateLink($user->isAdmin(), $link);
             }
         }
 
@@ -118,6 +117,61 @@ class NotificationService
         foreach ($users as $user) {
             $this->send($user, $type, $title, $message, $data, $icon, $link);
         }
+    }
+
+    /**
+     * Same notification, sent to many users, in one bulk INSERT instead
+     * of one Notification::create() per recipient. For a recipient list
+     * that can be large (e.g. every buyer on a new listing — see
+     * newProductListed() below), a per-row create() means one full model
+     * load plus one round-trip write per user; this needs neither.
+     *
+     * Only takes user IDs (never loads the User rows), so it deliberately
+     * assumes none of the recipients are admins — true for every current
+     * caller (buyers only). generateLink()'s admin-path handling would
+     * otherwise differ per recipient; sendToAdmins()/send() remain the
+     * right call for any admin-inclusive audience.
+     *
+     * Bypasses Eloquent model events/casts (insert() is a raw query
+     * builder call), so timestamps and the JSON `data` column are set
+     * explicitly here to match what Notification::create() produces.
+     * Chunked to keep each INSERT's parameter count well under
+     * PostgreSQL/PDO limits even for a large recipient list.
+     */
+    public function sendManyToUserIds(array $userIds, string $type, string $title, string $message, array $data = [], ?string $icon = null, ?string $link = null): void
+    {
+        $userIds = array_values(array_unique(array_map('intval', $userIds)));
+
+        if (empty($userIds)) {
+            return;
+        }
+
+        if ($link && !str_starts_with($link, '/app') && !str_starts_with($link, 'http')) {
+            $link = $this->generateLink(false, $link);
+        }
+
+        $now = now();
+        $encodedData = json_encode($data);
+
+        $rows = array_map(fn (int $userId) => [
+            'user_id' => $userId,
+            'type' => $type,
+            'title' => $title,
+            'message' => $message,
+            'data' => $encodedData,
+            'icon' => $icon,
+            'link' => $link,
+            'is_read' => false,
+            'read_at' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], $userIds);
+
+        foreach (array_chunk($rows, 500) as $chunk) {
+            Notification::insert($chunk);
+        }
+
+        Log::info('Batch notification (' . $type . ') created for ' . count($userIds) . ' users');
     }
 
     /**
@@ -354,13 +408,15 @@ class NotificationService
     }
 
     /**
-     * Send new product listing notification to admins AND buyers
+     * Send new product listing notification to admins AND buyers.
+     * $buyerIds is a plain list of user IDs (not hydrated User models) —
+     * see sendManyToUserIds() for why.
      */
-    public function newProductListed(array $buyers, $product): void
+    public function newProductListed(array $buyerIds, $product): void
     {
         // Send to buyers who follow this farmer or category
-        $this->sendToMany(
-            $buyers,
+        $this->sendManyToUserIds(
+            $buyerIds,
             'new_product',
             'New Product Available! 🌾',
             "A new product has been listed: {$product->name} by {$product->farmer->name}.",

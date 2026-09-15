@@ -193,9 +193,12 @@ class ProductController extends Controller
             try {
                 $notificationService = app(NotificationService::class);
 
-                // Get buyers who might be interested (you can customize this)
-                $buyers = User::where('role', 'buyer')->get()->all();
-                $notificationService->newProductListed($buyers, $product);
+                // Get buyers who might be interested (you can customize this).
+                // Only the id is needed — newProductListed() batch-inserts
+                // notifications by user id, it never touches other buyer
+                // columns.
+                $buyerIds = User::where('role', 'buyer')->pluck('id')->all();
+                $notificationService->newProductListed($buyerIds, $product);
 
                 Log::info('New product notification sent for product: ' . $product->id);
             } catch (\Exception $e) {

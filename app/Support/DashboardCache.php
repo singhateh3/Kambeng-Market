@@ -25,6 +25,7 @@ class DashboardCache
 
     private const ADMIN_KEY = 'dashboard:admin:statistics';
     private const ADMIN_CHARTS_KEY = 'dashboard:admin:charts';
+    private const PUBLIC_KEY = 'dashboard:public:statistics';
 
     public static function adminKey(): string
     {
@@ -34,6 +35,11 @@ class DashboardCache
     public static function adminChartsKey(): string
     {
         return self::ADMIN_CHARTS_KEY;
+    }
+
+    public static function publicKey(): string
+    {
+        return self::PUBLIC_KEY;
     }
 
     public static function farmerKey(int $farmerId): string
@@ -59,5 +65,18 @@ class DashboardCache
         }
 
         Cache::forget(self::farmerKey($farmerId));
+    }
+
+    /**
+     * Forgets the public homepage statistics cache (GET /public/statistics
+     * — see PublicController::statistics()). Kept as its own key/forget
+     * call rather than folded into forgetAdmin() — a public homepage stat
+     * and the full admin dashboard have no reason to share one cache
+     * entry, even though the model events that invalidate them overlap
+     * (see AppServiceProvider::configureDashboardCacheInvalidation()).
+     */
+    public static function forgetPublic(): void
+    {
+        Cache::forget(self::PUBLIC_KEY);
     }
 }

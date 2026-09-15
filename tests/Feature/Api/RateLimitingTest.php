@@ -100,6 +100,18 @@ class RateLimitingTest extends TestCase
             ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
     }
 
+    public function test_public_statistics_is_throttled_per_ip_beyond_sixty_per_minute(): void
+    {
+        // Phase 1 P0 fix — this endpoint previously had no limiter at all.
+        for ($i = 0; $i < 60; $i++) {
+            $this->getJson('/api/public/statistics')->assertStatus(200);
+        }
+
+        $this->getJson('/api/public/statistics')
+            ->assertStatus(429)
+            ->assertJsonPath('code', 'TOO_MANY_ATTEMPTS');
+    }
+
     private function validProductPayload(): array
     {
         // No 'photos' key — ProductController::store()'s Cloudinary upload

@@ -11,6 +11,7 @@ use Illuminate\Support\Str;
 
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Review;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Support\DashboardCache;
@@ -42,18 +43,31 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Dashboard/farmer statistics are cached (see DashboardCache and
-     * AdminDashboardController::statistics() / FarmerProfileController::statistics()).
-     * Registered here as model events rather than scattered Cache::forget()
-     * calls in every controller that touches an order/product/user — this
+     * Dashboard/farmer/public statistics are cached (see DashboardCache,
+     * AdminDashboardController::statistics(), FarmerProfileController::
+     * statistics(), and PublicController::statistics()). Registered here
+     * as model events rather than scattered Cache::forget() calls in
+     * every controller that touches an order/product/user/review — this
      * way every current and future write path (including the ModemPay
      * webhook, which updates orders directly) invalidates automatically.
+     *
+     * Public statistics (GET /public/statistics) reports products.active,
+     * users.farmers, orders.total, and reviews.average_rating — i.e. a
+     * subset of exactly what Order/Product/User already invalidate here,
+     * plus reviews, which nothing previously listened for. forgetPublic()
+     * is added to the existing Order/Product/User closures rather than a
+     * separate set of listeners, and a Review listener is added purely
+     * for forgetPublic() — scoped to the public cache only, since wiring
+     * Review into forgetAdmin() as well (admin stats also reads review
+     * data, but has never invalidated on it) is a pre-existing gap
+     * unrelated to this endpoint and out of scope here.
      */
     protected function configureDashboardCacheInvalidation(): void
     {
         $forgetForOrder = function (Order $order): void {
             DashboardCache::forgetAdmin();
             DashboardCache::forgetFarmer($order->product?->farmer_id);
+            DashboardCache::forgetPublic();
         };
         Order::saved($forgetForOrder);
         Order::deleted($forgetForOrder);
@@ -61,14 +75,25 @@ class AppServiceProvider extends ServiceProvider
         $forgetForProduct = function (Product $product): void {
             DashboardCache::forgetAdmin();
             DashboardCache::forgetFarmer($product->farmer_id);
+            DashboardCache::forgetPublic();
         };
         Product::saved($forgetForProduct);
         Product::deleted($forgetForProduct);
 
         // Admin stats include user/farmer-verification counts; farmer
         // statistics don't depend on User fields, so no per-farmer forget here.
-        User::saved(fn () => DashboardCache::forgetAdmin());
-        User::deleted(fn () => DashboardCache::forgetAdmin());
+        $forgetForUser = function (): void {
+            DashboardCache::forgetAdmin();
+            DashboardCache::forgetPublic();
+        };
+        User::saved($forgetForUser);
+        User::deleted($forgetForUser);
+
+        // Only public statistics reads review data (reviews.average_rating)
+        // — admin/farmer dashboards don't, so no forgetAdmin()/forgetFarmer()
+        // here.
+        Review::saved(fn () => DashboardCache::forgetPublic());
+        Review::deleted(fn () => DashboardCache::forgetPublic());
     }
 
     /**
@@ -239,6 +264,15 @@ class AppServiceProvider extends ServiceProvider
         // substitute for that existing protection.
         RateLimiter::for('admin-financial', function (Request $request) {
             return Limit::perMinute(10)->by($request->user()->id);
+        });
+
+        // --------------------------------------------------------------
+        // Phase 1 P0 fix — GET /public/statistics had no limiter at all
+        // (audit finding). Public/unauthenticated, so IP-only, same
+        // pattern as the other public-* limiters above.
+        // --------------------------------------------------------------
+        RateLimiter::for('public-statistics', function (Request $request) {
+            return Limit::perMinute(60)->by($request->ip());
         });
     }
 }
