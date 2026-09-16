@@ -38,6 +38,25 @@ class Order extends Model
         'payout_released_at',
     ];
 
+    /**
+     * modempay_intent_secret is the token ModemPay's own GET
+     * /v1/payments/verify requires to check a payment intent's status —
+     * a bearer-secret-like credential, not a display/correlation id (see
+     * database/migrations/2026_08_31_234943_add_modempay_intent_secret_to_orders_table.php).
+     * Several controller methods (index/show/updateStatus/cancel/confirm)
+     * return this model directly rather than through OrderResource, so
+     * $hidden is what actually keeps it out of every JSON response — it
+     * has no effect on internal attribute access, so ModemPayWebhookController,
+     * ReconcileModemPayTransactions, and OrderController::store() (which
+     * read/write it directly as an Eloquent attribute, never via
+     * toArray()/toJson()) are unaffected. modempay_intent_id and
+     * modempay_transfer_id are deliberately NOT hidden — per that same
+     * migration, they're stable correlation ids, not secrets.
+     */
+    protected $hidden = [
+        'modempay_intent_secret',
+    ];
+
     protected $casts = [
         'quantity' => 'decimal:2',
         'total_price' => 'decimal:2',
