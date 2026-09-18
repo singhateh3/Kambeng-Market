@@ -100,6 +100,17 @@ class AuthController extends Controller
             // Get user
             $user = User::where('email', $request->email)->firstOrFail();
 
+            // Phase 3B — a deactivated account can never authenticate
+            // again, even with the correct password. Checked here (before
+            // any token is issued) rather than relying solely on
+            // EnsureAccountIsActive, which only protects an
+            // *already-issued* token on its next request.
+            if ($user->deactivated_at !== null) {
+                throw ValidationException::withMessages([
+                    'email' => ['This account has been deactivated.'],
+                ]);
+            }
+
             // Revoke existing tokens (optional - good for security)
             $user->tokens()->delete();
 

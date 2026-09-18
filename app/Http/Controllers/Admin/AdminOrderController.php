@@ -226,10 +226,26 @@ class AdminOrderController extends Controller
     }
 
     /**
-     * Delete an order
+     * Delete an order.
+     *
+     * Phase 3B: payment_transactions.order_id, reviews.order_id, and
+     * disputes.order_id are now RESTRICT (previously CASCADE) precisely so
+     * this can never silently destroy financial/business history — see
+     * 2026_09_17_000001_restrict_business_history_cascades_on_user_deletion.
+     * This checks the same condition up front so a blocked deletion
+     * returns a clear 422 instead of a raw database-constraint 500; the
+     * database restriction itself remains the actual enforcement, not this
+     * check.
      */
     public function destroy(Order $order): JsonResponse
     {
+        if ($order->paymentTransactions()->exists() || $order->review()->exists() || $order->dispute()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This order cannot be deleted because it has associated payment, review, or dispute records. Financial and business history cannot be removed.',
+            ], 422);
+        }
+
         $order->delete();
 
         return response()->json([

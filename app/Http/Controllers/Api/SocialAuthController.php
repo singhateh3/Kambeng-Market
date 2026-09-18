@@ -86,6 +86,20 @@ class SocialAuthController extends Controller
             ], 409);
         }
 
+        // Phase 3B — a deactivated account's provider/provider_id link is
+        // deliberately left intact (see UserDeactivationService), so a
+        // returning Google/Apple sign-in resolves straight to this same
+        // row via findOrCreateUser()'s provider+provider_id lookup. Reject
+        // here rather than letting it silently sign back in — same 401
+        // shape this method already uses for a token-verification failure
+        // just above.
+        if ($user->deactivated_at !== null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This account has been deactivated.',
+            ], 401);
+        }
+
         // Same single-active-token model as AuthController::login().
         $user->tokens()->delete();
         $token = $user->createToken('auth_token')->plainTextToken;

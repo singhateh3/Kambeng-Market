@@ -130,7 +130,7 @@ if (app()->environment('local')) {
 // ============================================
 // ADMIN ROUTES (Authentication + Admin role required)
 // ============================================
-Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'account.active', 'admin'])->prefix('admin')->group(function () {
 
     // Dashboard
     Route::get('/dashboard/statistics', [AdminDashboardController::class, 'statistics']);
@@ -197,7 +197,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
 // ============================================
 // PROTECTED ROUTES (Authentication required)
 // ============================================
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'account.active'])->group(function () {
 
     // Auth routes
     Route::post('/logout', [AuthController::class, 'logout']);

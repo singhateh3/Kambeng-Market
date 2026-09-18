@@ -31,6 +31,7 @@ class Product extends Model
         'photos' => 'array',
         'harvest_date' => 'date',
         'expiry_date' => 'date',
+        'delisted_at' => 'datetime',
         'price' => 'decimal:2',
         'quantity' => 'decimal:2',
         'views_count' => 'integer',
@@ -88,7 +89,8 @@ class Product extends Model
     public function scopeActive($query)
     {
         return $query->where('status', 'active')
-            ->where('expiry_date', '>=', now()->startOfDay());
+            ->where('expiry_date', '>=', now()->startOfDay())
+            ->whereNull('delisted_at');
     }
 
     /**
@@ -96,7 +98,9 @@ class Product extends Model
      */
     public function isAvailable(): bool
     {
-        return $this->status === 'active' && $this->expiry_date >= now()->startOfDay();
+        return $this->status === 'active'
+            && $this->expiry_date >= now()->startOfDay()
+            && $this->delisted_at === null;
     }
 
     /**

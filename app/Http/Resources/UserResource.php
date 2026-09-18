@@ -29,6 +29,7 @@ class UserResource extends JsonResource
             'verification_status' => $this->verification_status ?? 'pending',
             'verification_status_label' => $this->verification_status_label ?? 'Pending',
             'verification_requested_at' => $this->verification_requested_at?->toISOString(),
+            'deactivated_at' => $this->deactivated_at?->toISOString(),
             'created_at' => $this->created_at?->toISOString(),
             'farmer_profile' => $this->whenLoaded('farmerProfile', function () {
                 return [

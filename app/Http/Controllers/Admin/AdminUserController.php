@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\UserDeactivationService;
 use App\Support\Pagination;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -199,34 +200,51 @@ class AdminUserController extends Controller
     }
 
     /**
-     * Delete a user
+     * Deactivate a user (Phase 3B).
+     *
+     * This used to be a hard delete that cascaded through the user's
+     * products into their orders, payment_transactions, reviews, and
+     * disputes — silently destroying financial/business history. It now
+     * deactivates + anonymizes the account instead (see
+     * UserDeactivationService) and never deletes the user row or any of
+     * that history. Endpoint path, method, and response shape are
+     * unchanged for frontend compatibility — only the message text and
+     * actual effect changed.
      */
-    public function destroy(Request $request, User $user): JsonResponse
+    public function destroy(Request $request, User $user, UserDeactivationService $deactivation): JsonResponse
     {
         try {
-            // Prevent admin from deleting themselves
+            // Prevent admin from deactivating themselves — same guard as
+            // before, same reasoning (an admin locking themselves out).
             if ($request->user()->id === $user->id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'You cannot delete your own account',
+                    'message' => 'You cannot deactivate your own account',
                 ], 422);
             }
 
-            // Delete related data
-            if ($user->farmerProfile) {
-                $user->farmerProfile->delete();
+            $result = $deactivation->deactivate($user);
+
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This account is already deactivated',
+                ], 422);
             }
 
-            $user->delete();
+            $message = 'User deactivated successfully';
+            if ($result['settlement_deferred']) {
+                $message .= '. Settlement details were retained because a payout for this farmer is still pending release.';
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'User deleted successfully',
+                'message' => $message,
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error deleting user: ' . $e->getMessage(),
+                'message' => 'Error deactivating user: ' . $e->getMessage(),
             ], 500);
         }
     }
